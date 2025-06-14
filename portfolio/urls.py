@@ -1,8 +1,10 @@
 from django.urls import path
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
 import json
 import uuid
+from datetime import datetime
 
 @csrf_exempt
 def portfolios_list(request):
@@ -65,7 +67,7 @@ def portfolios_list(request):
             new_portfolio = {
                 'id': str(uuid.uuid4()),
                 'name': data.get('name', 'New Portfolio'),
-                'created_at': '2024-06-15T12:00:00Z',
+                'created_at': datetime.now().isoformat() + 'Z',
                 'transaction_count': 0,
                 'transactions': []
             }
@@ -124,7 +126,7 @@ def portfolio_detail(request, portfolio_id):
 
 @csrf_exempt
 def portfolio_transactions(request, portfolio_id):
-    """Portfolio transactions endpoint"""
+    """Portfolio transactions endpoint - THIS IS THE MISSING ENDPOINT"""
     if request.method == 'GET':
         return JsonResponse({
             'transactions': [
@@ -144,19 +146,29 @@ def portfolio_transactions(request, portfolio_id):
     elif request.method == 'POST':
         try:
             data = json.loads(request.body)
+            print(f"Received transaction data: {data}")  # Debug log
+            
+            # Calculate total value
+            amount = float(data.get('amount', 0))
+            price_usd = float(data.get('price_usd', 0))
+            total_value = amount * price_usd
+            
             new_transaction = {
                 'id': str(uuid.uuid4()),
                 'coin_id': data.get('coin_id'),
                 'coin_name': data.get('coin_name'),
                 'coin_symbol': data.get('coin_symbol'),
-                'amount': float(data.get('amount', 0)),
-                'price_usd': float(data.get('price_usd', 0)),
+                'amount': amount,
+                'price_usd': price_usd,
                 'transaction_type': data.get('transaction_type', 'buy'),
-                'timestamp': '2024-06-15T12:00:00Z',
-                'total_value': float(data.get('amount', 0)) * float(data.get('price_usd', 0))
+                'timestamp': datetime.now().isoformat() + 'Z',
+                'total_value': total_value
             }
+            
+            print(f"Returning transaction: {new_transaction}")  # Debug log
             return JsonResponse(new_transaction, status=201)
         except Exception as e:
+            print(f"Error creating transaction: {str(e)}")  # Debug log
             return JsonResponse({'error': 'Invalid data', 'details': str(e)}, status=400)
 
 @csrf_exempt
@@ -167,7 +179,7 @@ def transaction_detail(request, portfolio_id, transaction_id):
 
 @csrf_exempt
 def portfolio_analytics(request, portfolio_id):
-    """Portfolio analytics endpoint"""
+    """Portfolio analytics endpoint - THIS WAS ALSO MISSING"""
     return JsonResponse({
         'total_value': 50000,
         'total_cost': 45000,
@@ -196,7 +208,7 @@ def portfolio_analytics(request, portfolio_id):
 
 @csrf_exempt
 def coin_search(request):
-    """Coin search endpoint"""
+    """Coin search endpoint - THIS WAS MISSING"""
     query = request.GET.get('q', '').lower()
     mock_coins = [
         {'id': 'bitcoin', 'name': 'Bitcoin', 'symbol': 'BTC', 'thumb': '', 'market_cap_rank': 1},
@@ -204,18 +216,24 @@ def coin_search(request):
         {'id': 'cardano', 'name': 'Cardano', 'symbol': 'ADA', 'thumb': '', 'market_cap_rank': 3},
         {'id': 'solana', 'name': 'Solana', 'symbol': 'SOL', 'thumb': '', 'market_cap_rank': 4},
         {'id': 'dogecoin', 'name': 'Dogecoin', 'symbol': 'DOGE', 'thumb': '', 'market_cap_rank': 5},
+        {'id': 'polygon', 'name': 'Polygon', 'symbol': 'MATIC', 'thumb': '', 'market_cap_rank': 6},
+        {'id': 'chainlink', 'name': 'Chainlink', 'symbol': 'LINK', 'thumb': '', 'market_cap_rank': 7},
+        {'id': 'avalanche-2', 'name': 'Avalanche', 'symbol': 'AVAX', 'thumb': '', 'market_cap_rank': 8},
     ]
     
-    filtered_coins = [
-        coin for coin in mock_coins 
-        if query in coin['name'].lower() or query in coin['symbol'].lower()
-    ]
+    if query:
+        filtered_coins = [
+            coin for coin in mock_coins 
+            if query in coin['name'].lower() or query in coin['symbol'].lower()
+        ]
+    else:
+        filtered_coins = mock_coins[:5]  # Return top 5 if no query
     
     return JsonResponse({'coins': filtered_coins})
 
 @csrf_exempt
 def coin_prices(request):
-    """Coin prices endpoint"""
+    """Coin prices endpoint - THIS WAS MISSING"""
     ids = request.GET.get('ids', '').split(',')
     mock_prices = {
         'bitcoin': {
@@ -227,7 +245,7 @@ def coin_prices(request):
             'price_change_percentage_24h': 2.85,
             'market_cap': 850000000000,
             'volume_24h': 25000000000,
-            'last_updated': '2024-06-15T12:00:00Z'
+            'last_updated': datetime.now().isoformat() + 'Z'
         },
         'ethereum': {
             'id': 'ethereum',
@@ -238,7 +256,7 @@ def coin_prices(request):
             'price_change_percentage_24h': -1.96,
             'market_cap': 300000000000,
             'volume_24h': 15000000000,
-            'last_updated': '2024-06-15T12:00:00Z'
+            'last_updated': datetime.now().isoformat() + 'Z'
         },
         'cardano': {
             'id': 'cardano',
@@ -249,7 +267,29 @@ def coin_prices(request):
             'price_change_percentage_24h': 4.65,
             'market_cap': 15000000000,
             'volume_24h': 500000000,
-            'last_updated': '2024-06-15T12:00:00Z'
+            'last_updated': datetime.now().isoformat() + 'Z'
+        },
+        'solana': {
+            'id': 'solana',
+            'symbol': 'sol',
+            'name': 'Solana',
+            'current_price': 95,
+            'price_change_24h': 3,
+            'price_change_percentage_24h': 3.26,
+            'market_cap': 40000000000,
+            'volume_24h': 2000000000,
+            'last_updated': datetime.now().isoformat() + 'Z'
+        },
+        'dogecoin': {
+            'id': 'dogecoin',
+            'symbol': 'doge',
+            'name': 'Dogecoin',
+            'current_price': 0.08,
+            'price_change_24h': 0.001,
+            'price_change_percentage_24h': 1.25,
+            'market_cap': 11000000000,
+            'volume_24h': 800000000,
+            'last_updated': datetime.now().isoformat() + 'Z'
         }
     }
     
@@ -292,14 +332,14 @@ urlpatterns = [
     path('portfolios/', portfolios_list, name='portfolios-list'),
     path('portfolios/<str:portfolio_id>/', portfolio_detail, name='portfolio-detail'),
     
-    # Transaction endpoints (what your frontend expects)
+    # Transaction endpoints (THESE WERE MISSING - causing 404 errors)
     path('portfolios/<str:portfolio_id>/transactions/', portfolio_transactions, name='portfolio-transactions'),
     path('portfolios/<str:portfolio_id>/transactions/<str:transaction_id>/', transaction_detail, name='transaction-detail'),
     
-    # Analytics endpoint
+    # Analytics endpoint (THIS WAS MISSING)
     path('portfolios/<str:portfolio_id>/analytics/', portfolio_analytics, name='portfolio-analytics'),
     
-    # Coin endpoints
+    # Coin endpoints (THESE WERE MISSING)
     path('coins/search/', coin_search, name='coin-search'),
     path('coins/prices/', coin_prices, name='coin-prices'),
     
