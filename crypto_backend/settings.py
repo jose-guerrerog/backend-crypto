@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',  # REQUIRED for collectstatic command
+    'rest_framework',  # Django REST Framework
     'channels',
     'corsheaders',
     'portfolio',  # Your crypto portfolio app
@@ -122,6 +123,21 @@ CORS_ALLOWED_ORIGINS = [
 
 # Allow all origins in development, restrict in production
 CORS_ALLOW_ALL_ORIGINS = DEBUG
+
+# Django REST Framework configuration
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20
+}
 
 # Django Channels - In-memory layer (FREE, no Redis needed)
 CHANNEL_LAYERS = {
