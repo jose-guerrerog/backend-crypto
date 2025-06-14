@@ -15,7 +15,40 @@ from .models import Portfolio
 @csrf_exempt
 @api_view(['GET', 'POST'])
 def portfolios(request):
-    if request.method == 'POST':
+    if request.method == 'GET':
+        try:
+            portfolios = Portfolio.objects.all().order_by('-created_at')
+            result = []
+            for p in portfolios:
+                transactions = p.transactions.all()
+                print(f"🧠 Portfolio: {p.name} ({p.id}) - {transactions.count()} transactions")
+
+                result.append({
+                    'id': p.id,
+                    'name': p.name,
+                    'created_at': p.created_at.isoformat(),
+                    'transaction_count': transactions.count(),
+                    'transactions': [
+                        {
+                            'id': t.id,
+                            'coin_id': t.coin_id,
+                            'coin_name': t.coin_name,
+                            'coin_symbol': t.coin_symbol,
+                            'amount': t.amount,
+                            'price_usd': t.price_usd,
+                            'transaction_type': t.transaction_type,
+                            'timestamp': t.timestamp.isoformat(),
+                            'total_value': t.amount * t.price_usd
+                        }
+                        for t in transactions
+                    ]
+                })
+
+            return Response({'portfolios': result})
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+    elif request.method == 'POST':
         try:
             data = request.data
             name = data.get('name', '').strip() if isinstance(data, dict) else None
