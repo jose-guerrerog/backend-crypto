@@ -119,10 +119,25 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "https://localhost:3000",
     "https://127.0.0.1:3000",
+    "https://frontend-crypto-nine.vercel.app",  # Your deployed React app
 ]
 
 # Allow all origins in development, restrict in production
 CORS_ALLOW_ALL_ORIGINS = DEBUG
+
+# Additional CORS settings for better compatibility
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # Django REST Framework configuration
 REST_FRAMEWORK = {
