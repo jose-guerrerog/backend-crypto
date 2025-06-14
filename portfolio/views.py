@@ -73,15 +73,23 @@ def portfolio_detail(request, portfolio_id):
     """Handle individual portfolio operations"""
     session_key = get_session_key(request)
     
+    # Debug logging
+    print(f"🔍 Looking for portfolio ID: {portfolio_id}")
+    print(f"🔍 Available portfolios: {list(portfolio_storage.portfolios.keys())}")
+    print(f"🔍 Session key: {session_key}")
+    
     portfolio = portfolio_storage.get_portfolio(portfolio_id)
     if not portfolio:
-        return Response(
-            {'error': 'Portfolio not found'}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
+        # More detailed error for debugging
+        return Response({
+            'error': 'Portfolio not found',
+            'debug': {
+                'requested_id': portfolio_id,
+                'available_ids': list(portfolio_storage.portfolios.keys()),
+                'session_key': session_key
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
     
-    # For simplicity, allow access to any portfolio for demo purposes
-    # In production, you'd want proper user authentication
     if request.method == 'GET':
         transactions_data = []
         for transaction in portfolio.transactions:
@@ -120,14 +128,20 @@ def portfolio_transactions(request, portfolio_id):
     """Handle portfolio transactions - both GET (list) and POST (add)"""
     session_key = get_session_key(request)
     
+    # Debug logging
+    print(f"🔍 Transactions - Looking for portfolio ID: {portfolio_id}")
+    print(f"🔍 Available portfolios: {list(portfolio_storage.portfolios.keys())}")
+    
     portfolio = portfolio_storage.get_portfolio(portfolio_id)
     if not portfolio:
-        return Response(
-            {'error': 'Portfolio not found'}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return Response({
+            'error': 'Portfolio not found',
+            'debug': {
+                'requested_id': portfolio_id,
+                'available_ids': list(portfolio_storage.portfolios.keys())
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
     
-    # For demo purposes, allow access to any portfolio
     if request.method == 'GET':
         # Return list of transactions
         transactions_data = []
@@ -215,10 +229,13 @@ def remove_transaction(request, portfolio_id, transaction_id):
     
     portfolio = portfolio_storage.get_portfolio(portfolio_id)
     if not portfolio:
-        return Response(
-            {'error': 'Portfolio not found'}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return Response({
+            'error': 'Portfolio not found',
+            'debug': {
+                'requested_id': portfolio_id,
+                'available_ids': list(portfolio_storage.portfolios.keys())
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
     
     success = portfolio_storage.remove_transaction(portfolio_id, transaction_id)
     if success:
@@ -234,12 +251,20 @@ def portfolio_analytics_view(request, portfolio_id):
     """Get portfolio analytics and metrics"""
     session_key = get_session_key(request)
     
+    # Debug logging
+    print(f"🔍 Analytics - Looking for portfolio ID: {portfolio_id}")
+    print(f"🔍 Available portfolios: {list(portfolio_storage.portfolios.keys())}")
+    
     portfolio = portfolio_storage.get_portfolio(portfolio_id)
     if not portfolio:
-        return Response(
-            {'error': 'Portfolio not found'}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
+        return Response({
+            'error': 'Portfolio not found',
+            'debug': {
+                'requested_id': portfolio_id,
+                'available_ids': list(portfolio_storage.portfolios.keys()),
+                'session_key': session_key
+            }
+        }, status=status.HTTP_404_NOT_FOUND)
     
     try:
         metrics = portfolio_analytics.calculate_portfolio_metrics(portfolio)
