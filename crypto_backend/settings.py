@@ -34,10 +34,10 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # For serving static files
-    'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS must be at the top!
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware',  # Temporarily disabled for API testing
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -113,20 +113,26 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS settings (for your frontend)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # React development server
-    "http://127.0.0.1:3000",
-    "https://localhost:3000",
-    "https://127.0.0.1:3000",
-    "https://frontend-crypto-nine.vercel.app",  # Your deployed React app
+# CORS settings (simplified - allow all for debugging)
+CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins temporarily
+CORS_ALLOW_CREDENTIALS = True
+
+# Specific origins (commented out for debugging)
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:3000",
+#     "https://frontend-crypto-nine.vercel.app",
+# ]
+
+# Allow common HTTP methods
+CORS_ALLOWED_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
 ]
 
-# Allow all origins in development, restrict in production
-CORS_ALLOW_ALL_ORIGINS = DEBUG
-
-# Additional CORS settings for better compatibility
-CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_HEADERS = [
     'accept',
     'accept-encoding',
@@ -139,13 +145,22 @@ CORS_ALLOWED_HEADERS = [
     'x-requested-with',
 ]
 
+# CSRF settings for API
+CSRF_TRUSTED_ORIGINS = [
+    "https://frontend-crypto-nine.vercel.app",
+    "https://backend-crypto-zjml.onrender.com",
+]
+
+# For API-only usage, you might want to disable CSRF for certain views
+# This can be done in your views with @csrf_exempt decorator
+
 # Django REST Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.AllowAny',  # Allow all for now
     ],
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
