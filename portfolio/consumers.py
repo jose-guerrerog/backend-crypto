@@ -1,127 +1,73 @@
 import json
 import asyncio
+import aiohttp
 from channels.generic.websocket import AsyncWebsocketConsumer
-from .services import coingecko_service
 
-class PriceConsumer(AsyncWebsocketConsumer):
-    """WebSocket consumer for real-time cryptocurrency price updates"""
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.price_update_task = None
-        self.subscribed_coins = set()
-        self.update_interval = 30  # seconds
-    
+class CryptoPriceConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
-        print("WebSocket connection established")
+        print("WebSocket connected!")
+        
+        # Start sending price updates
+        self.price_task = asyncio.create_task(self.send_price_updates())
     
     async def disconnect(self, close_code):
-        # Cancel the price update task
-        if self.price_update_task:
-            self.price_update_task.cancel()
-        print(f"WebSocket connection closed with code: {close_code}")
+        print(f"WebSocket disconnected: {close_code}")
+        if hasattr(self, 'price_task'):
+            self.price_task.cancel()
     
     async def receive(self, text_data):
+        # Handle incoming messages from client
         try:
             data = json.loads(text_data)
-            action = data.get('action')
+            print(f"Received: {data}")
             
-            if action == 'subscribe':
-                coin_ids = data.get('coin_ids', [])
-                await self.subscribe_to_coins(coin_ids)
-            
-            elif action == 'unsubscribe':
-                coin_ids = data.get('coin_ids', [])
-                await self.unsubscribe_from_coins(coin_ids)
-            
-            elif action == 'ping':
-                await self.send(text_data=json.dumps({
-                    'type': 'pong',
-                    'timestamp': data.get('timestamp')
-                }))
-        
-        except json.JSONDecodeError:
+            # Echo back for testing
             await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': 'Invalid JSON format'
+                'type': 'message',
+                'data': f"Server received: {data}"
             }))
-    
-    async def subscribe_to_coins(self, coin_ids):
-        """Subscribe to price updates for specific coins"""
-        new_coins = set(coin_ids) - self.subscribed_coins
-        self.subscribed_coins.update(new_coins)
-        
-        if new_coins and not self.price_update_task:
-            # Start the price update task if it's not running
-            self.price_update_task = asyncio.create_task(self.send_price_updates())
-        
-        await self.send(text_data=json.dumps({
-            'type': 'subscription_confirmed',
-            'subscribed_coins': list(self.subscribed_coins),
-            'newly_subscribed': list(new_coins)
-        }))
-    
-    async def unsubscribe_from_coins(self, coin_ids):
-        """Unsubscribe from price updates for specific coins"""
-        removed_coins = set(coin_ids) & self.subscribed_coins
-        self.subscribed_coins -= removed_coins
-        
-        if not self.subscribed_coins and self.price_update_task:
-            # Stop the price update task if no coins are subscribed
-            self.price_update_task.cancel()
-            self.price_update_task = None
-        
-        await self.send(text_data=json.dumps({
-            'type': 'unsubscription_confirmed',
-            'subscribed_coins': list(self.subscribed_coins),
-            'unsubscribed': list(removed_coins)
-        }))
+        except Exception as e:
+            print(f"Error handling message: {e}")
     
     async def send_price_updates(self):
-        """Send periodic price updates for subscribed coins"""
-        while self.subscribed_coins:
+        """Send crypto price updates every 30 seconds"""
+        while True:
             try:
-                # Fetch current prices (this is a sync operation, so we'll run it in executor)
-                coin_list = list(self.subscribed_coins)
-                loop = asyncio.get_event_loop()
-                
-                # Run the synchronous API call in a thread pool
-                prices = await loop.run_in_executor(
-                    None, 
-                    coingecko_service.get_detailed_coin_data, 
-                    coin_list
-                )
-                
-                if prices:
-                    formatted_prices = {}
-                    for coin_id, coin_data in prices.items():
-                        formatted_prices[coin_id] = {
-                            'id': coin_data.id,
-                            'symbol': coin_data.symbol,
-                            'name': coin_data.name,
-                            'current_price': coin_data.current_price,
-                            'price_change_24h': coin_data.price_change_24h,
-                            'price_change_percentage_24h': round(coin_data.price_change_percentage_24h, 2),
-                            'market_cap': coin_data.market_cap,
-                            'volume_24h': coin_data.volume_24h,
-                            'last_updated': coin_data.last_updated.isoformat()
-                        }
-                    
-                    await self.send(text_data=json.dumps({
-                        'type': 'price_update',
-                        'prices': formatted_prices,
-                        'timestamp': coin_data.last_updated.isoformat() if prices else None
-                    }))
-                
-                # Wait for the next update
-                await asyncio.sleep(self.update_interval)
-                
+                prices = await self.fetch_crypto_prices()
+                await self.send(text_data=json.dumps({
+                    'type': 'price_update',
+                    'data': prices
+                }))
+                await asyncio.sleep(30)  # Update every 30 seconds
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                await self.send(text_data=json.dumps({
-                    'type': 'error',
-                    'message': f'Price update failed: {str(e)}'
-                }))
-                await asyncio.sleep(self.update_interval)
+                print(f"Error sending price updates: {e}")
+                await asyncio.sleep(10)  # Wait before retrying
+    
+    async def fetch_crypto_prices(self):
+        """Fetch crypto prices from CoinGecko API"""
+        try:
+            url = "https://api.coingecko.com/api/v3/simple/price"
+            params = {
+                'ids': 'bitcoin,ethereum,cardano,polkadot,chainlink',
+                'vs_currencies': 'usd',
+                'include_24hr_change': 'true'
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data
+                    else:
+                        print(f"API error: {response.status}")
+                        return {}
+        except Exception as e:
+            print(f"Error fetching prices: {e}")
+            return {
+                'bitcoin': {'usd': 45000, 'usd_24h_change': 2.5},
+                'ethereum': {'usd': 3000, 'usd_24h_change': 1.8},
+                'cardano': {'usd': 0.5, 'usd_24h_change': -0.5},
+            }

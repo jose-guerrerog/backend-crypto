@@ -169,6 +169,9 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20
 }
 
+# ASGI configuration for WebSockets
+ASGI_APPLICATION = 'crypto_backend.asgi.application'
+
 # Django Channels - In-memory layer (FREE, no Redis needed)
 CHANNEL_LAYERS = {
     'default': {
