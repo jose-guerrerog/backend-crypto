@@ -160,3 +160,46 @@ def portfolio_analytics_view(request, portfolio_id):
         'worst_performer': metrics.worst_performer,
         'asset_allocation': {k: round(v, 2) for k, v in metrics.asset_allocation.items()}
     })
+
+@api_view(['GET'])
+def search_coins(request):
+    """Search for cryptocurrencies"""
+    query = request.GET.get('q', '').strip()
+    results = []
+
+    if query:
+        try:
+            results = coingecko_service.search_coins(query)
+        except Exception as e:
+            print(f"CoinGecko search error: {e}")
+
+    return Response({'coins': results})
+
+
+@api_view(['GET'])
+def coin_prices(request):
+    """Get current prices for specified coins"""
+    coin_ids = request.GET.get('ids', '').strip()
+    if not coin_ids:
+        return Response({'prices': {}})
+
+    coin_list = [coin.strip() for coin in coin_ids.split(',') if coin.strip()]
+    try:
+        prices = coingecko_service.get_detailed_coin_data(coin_list)
+        formatted = {
+            coin_id: {
+                'id': c.id,
+                'symbol': c.symbol,
+                'name': c.name,
+                'current_price': c.current_price,
+                'price_change_24h': c.price_change_24h,
+                'price_change_percentage_24h': round(c.price_change_percentage_24h, 2),
+                'market_cap': c.market_cap,
+                'volume_24h': c.volume_24h,
+                'last_updated': c.last_updated.isoformat()
+            } for coin_id, c in prices.items()
+        }
+        return Response({'prices': formatted})
+    except Exception as e:
+        print(f"Price fetch error: {e}")
+        return Response({'error': str(e)}, status=500)
