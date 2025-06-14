@@ -6,47 +6,44 @@ from datetime import datetime
 from .models import Portfolio, Transaction
 from .services import coingecko_service, portfolio_analytics
 
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from django.views.decorators.csrf import csrf_exempt
+from .models import Portfolio
+
+@csrf_exempt
 @api_view(['GET', 'POST'])
 def portfolios(request):
-    if request.method == 'GET':
-        portfolios = Portfolio.objects.all().order_by('-created_at')
-        result = []
-        for p in portfolios:
-            transactions = p.transactions.all()
-            result.append({
-                'id': p.id,
-                'name': p.name,
-                'created_at': p.created_at.isoformat(),
-                'transaction_count': transactions.count(),
-                'transactions': [
-                    {
-                        'id': t.id,
-                        'coin_id': t.coin_id,
-                        'coin_name': t.coin_name,
-                        'coin_symbol': t.coin_symbol,
-                        'amount': t.amount,
-                        'price_usd': t.price_usd,
-                        'transaction_type': t.transaction_type,
-                        'timestamp': t.timestamp.isoformat(),
-                        'total_value': t.amount * t.price_usd
-                    }
-                    for t in transactions
-                ]
-            })
-        return Response({'portfolios': result})
+    if request.method == 'POST':
+        try:
+            data = request.data
+            name = data.get('name', '').strip() if isinstance(data, dict) else None
 
-    elif request.method == 'POST':
-        name = request.data.get('name', '').strip()
-        if not name:
-            return Response({'error': 'Portfolio name is required'}, status=400)
-        portfolio = Portfolio.objects.create(name=name)
-        return Response({
-            'id': portfolio.id,
-            'name': portfolio.name,
-            'created_at': portfolio.created_at.isoformat(),
-            'transaction_count': 0,
-            'transactions': []
-        }, status=201)
+            if not name:
+                return Response({
+                    'error': 'Portfolio name is required',
+                    'debug': {'data': str(data)}
+                }, status=400)
+
+            portfolio = Portfolio.objects.create(name=name)
+
+            return Response({
+                'id': portfolio.id,
+                'name': portfolio.name,
+                'created_at': portfolio.created_at.isoformat(),
+                'transaction_count': 0,
+                'transactions': []
+            }, status=201)
+
+        except Exception as e:
+            # Debug info visible in response
+            return Response({
+                'error': 'Server error',
+                'debug': str(e),
+                'data': str(request.data)
+            }, status=500)
+
 
 @api_view(['GET', 'DELETE'])
 def portfolio_detail(request, portfolio_id):
