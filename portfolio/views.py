@@ -163,16 +163,20 @@ def portfolio_transactions(request, portfolio_id):
     elif request.method == 'POST':
         # Add new transaction
         data = request.data
+        print(f"🔍 POST Transaction Data: {data}")
+        
         required_fields = ['coin_id', 'coin_name', 'coin_symbol', 'amount', 'price_usd', 'transaction_type']
         
         for field in required_fields:
             if field not in data:
+                print(f"❌ Missing field: {field}")
                 return Response(
                     {'error': f'{field} is required'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
         try:
+            print(f"🔍 Creating transaction for portfolio: {portfolio_id}")
             transaction = Transaction(
                 id="",  # Will be generated in __post_init__
                 coin_id=data['coin_id'],
@@ -183,6 +187,8 @@ def portfolio_transactions(request, portfolio_id):
                 transaction_type=data['transaction_type'],
                 timestamp=datetime.now()
             )
+            
+            print(f"🔍 Transaction created: {transaction.id}")
             
             if transaction.amount <= 0:
                 return Response(
@@ -203,6 +209,7 @@ def portfolio_transactions(request, portfolio_id):
                 )
             
             portfolio_storage.add_transaction(portfolio_id, transaction)
+            print(f"✅ Transaction added successfully!")
             
             return Response({
                 'id': transaction.id,
@@ -217,9 +224,16 @@ def portfolio_transactions(request, portfolio_id):
             }, status=status.HTTP_201_CREATED)
             
         except (ValueError, TypeError) as e:
+            print(f"❌ Error creating transaction: {e}")
             return Response(
                 {'error': 'Invalid numeric values'}, 
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            print(f"❌ Unexpected error: {e}")
+            return Response(
+                {'error': f'Unexpected error: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 @api_view(['DELETE'])
