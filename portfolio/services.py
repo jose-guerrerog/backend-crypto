@@ -38,38 +38,38 @@ class CoinGeckoService:
         self.rate_limit_delay = 1.2
 
     def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
-    current_time = time.time()
-    time_since_last = current_time - self.last_request_time
-    if time_since_last < self.rate_limit_delay:
-        time.sleep(self.rate_limit_delay - time_since_last)
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.rate_limit_delay:
+            time.sleep(self.rate_limit_delay - time_since_last)
 
-    try:
-        # Build original URL
-        target_url = f"{self.BASE_URL}{endpoint}"
-        if params:
-            param_str = "&".join(f"{key}={value}" for key, value in params.items())
-            target_url = f"{target_url}?{param_str}"
+        try:
+            # Build original URL
+            target_url = f"{self.BASE_URL}{endpoint}"
+            if params:
+                param_str = "&".join(f"{key}={value}" for key, value in params.items())
+                target_url = f"{target_url}?{param_str}"
 
-        # Use AllOrigins proxy
-        proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url)}"
+            # Use AllOrigins proxy
+            proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url)}"
 
-        response = self.session.get(proxy_url, timeout=10)
-        self.last_request_time = time.time()
+            response = self.session.get(proxy_url, timeout=10)
+            self.last_request_time = time.time()
 
-        if response.status_code == 200:
-            proxy_data = response.json()
-            if 'contents' in proxy_data:
-                return requests.utils.json.loads(proxy_data['contents'])
+            if response.status_code == 200:
+                proxy_data = response.json()
+                if 'contents' in proxy_data:
+                    return requests.utils.json.loads(proxy_data['contents'])
+                else:
+                    print("⚠️ No 'contents' in AllOrigins response")
+                    return None
             else:
-                print("⚠️ No 'contents' in AllOrigins response")
+                print(f"❌ Proxy API Error {response.status_code}: {response.text}")
                 return None
-        else:
-            print(f"❌ Proxy API Error {response.status_code}: {response.text}")
-            return None
 
-    except requests.exceptions.RequestException as e:
-        print(f"Request error: {e}")
-        return None
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {e}")
+            return None
 
     def get_coin_data(self, coin_ids: List[str]) -> Dict[str, CoinData]:
         if not coin_ids:
