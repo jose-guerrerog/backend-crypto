@@ -38,23 +38,38 @@ class CoinGeckoService:
         self.rate_limit_delay = 1.2
 
     def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
-        current_time = time.time()
-        time_since_last = current_time - self.last_request_time
-        if time_since_last < self.rate_limit_delay:
-            time.sleep(self.rate_limit_delay - time_since_last)
+    current_time = time.time()
+    time_since_last = current_time - self.last_request_time
+    if time_since_last < self.rate_limit_delay:
+        time.sleep(self.rate_limit_delay - time_since_last)
 
-        try:
-            url = f"{self.BASE_URL}{endpoint}"
-            response = self.session.get(url, params=params or {}, timeout=10)
-            self.last_request_time = time.time()
-            if response.status_code == 200:
-                return response.json()
+    try:
+        # Build original URL
+        target_url = f"{self.BASE_URL}{endpoint}"
+        if params:
+            param_str = "&".join(f"{key}={value}" for key, value in params.items())
+            target_url = f"{target_url}?{param_str}"
+
+        # Use AllOrigins proxy
+        proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url)}"
+
+        response = self.session.get(proxy_url, timeout=10)
+        self.last_request_time = time.time()
+
+        if response.status_code == 200:
+            proxy_data = response.json()
+            if 'contents' in proxy_data:
+                return requests.utils.json.loads(proxy_data['contents'])
             else:
-                print(f"\u274c API Error {response.status_code}: {response.text}")
+                print("⚠️ No 'contents' in AllOrigins response")
                 return None
-        except requests.exceptions.RequestException as e:
-            print(f"Request error: {e}")
+        else:
+            print(f"❌ Proxy API Error {response.status_code}: {response.text}")
             return None
+
+    except requests.exceptions.RequestException as e:
+        print(f"Request error: {e}")
+        return None
 
     def get_coin_data(self, coin_ids: List[str]) -> Dict[str, CoinData]:
         if not coin_ids:
