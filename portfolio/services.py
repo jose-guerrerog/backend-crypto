@@ -45,29 +45,29 @@ class CoinGeckoService:
             time.sleep(self.rate_limit_delay - time_since_last)
 
         try:
-            # Build original URL
             target_url = f"{self.BASE_URL}{endpoint}"
             if params:
                 param_str = "&".join(f"{key}={value}" for key, value in params.items())
                 target_url = f"{target_url}?{param_str}"
 
-            # Use AllOrigins proxy
             proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url)}"
-
             response = self.session.get(proxy_url, timeout=10)
             self.last_request_time = time.time()
 
             if response.status_code == 200:
                 proxy_data = response.json()
                 if 'contents' in proxy_data:
-                    return json.loads(proxy_data['contents'])
+                    try:
+                        return json.loads(proxy_data['contents'])
+                    except json.JSONDecodeError as e:
+                        print(f"❌ JSON decode error: {e}")
+                        return None
                 else:
                     print("⚠️ No 'contents' in AllOrigins response")
                     return None
             else:
-                print(f"❌ Proxy API Error {response.status_code}: {response.text}")
+                print(f"❌ Proxy request failed [{response.status_code}] on {proxy_url}")
                 return None
-
         except requests.exceptions.RequestException as e:
             print(f"Request error: {e}")
             return None
@@ -79,16 +79,16 @@ class CoinGeckoService:
         coin_ids_sorted = sorted(coin_ids[:250])
         coin_ids_str = ",".join(coin_ids_sorted)
         cache_key = f"coin_data:{coin_ids_str}"
-        
+
         try:
             cached = cache.get(cache_key)
         except Exception as e:
             print(f"⚠️ Redis cache error: {e}")
             cached = None
 
-        if cached_data:
-            print(f"\u2705 Using cached data for: {coin_ids_str}")
-            return cached_data
+        if cached:
+            print(f"✅ Using cached data for: {coin_ids_str}")
+            return cached
 
         params = {
             'ids': coin_ids_str,
@@ -118,7 +118,7 @@ class CoinGeckoService:
             )
 
         cache.set(cache_key, result, timeout=300)
-        print(f"\ud83d\udce6 Cached data for: {coin_ids_str}")
+        print(f"📦 Cached data for: {coin_ids_str}")
 
         return result
 
@@ -134,10 +134,10 @@ class CoinGeckoService:
             cached = cache.get(cache_key)
         except Exception as e:
             print(f"⚠️ Redis cache error: {e}")
-        cached = None
+            cached = None
 
         if cached:
-            print(f"\u2705 Using cached detailed data for: {coin_ids_str}")
+            print(f"✅ Using cached detailed data for: {coin_ids_str}")
             return cached
 
         params = {
@@ -151,8 +151,8 @@ class CoinGeckoService:
         }
 
         data = self._make_request("/coins/markets", params)
-        if not data:
-            print(f"\u26a0\ufe0f CoinGecko returned no data for: {coin_ids_str}")
+        if not data or not isinstance(data, list):
+            print(f"⚠️ CoinGecko returned no usable data for: {coin_ids_str}")
             return {}
 
         result = {}
@@ -170,7 +170,7 @@ class CoinGeckoService:
             )
 
         cache.set(cache_key, result, timeout=300)
-        print(f"\ud83d\udce6 Cached detailed data for: {coin_ids_str}")
+        print(f"📦 Cached detailed data for: {coin_ids_str}")
         return result
 
     def search_coins(self, query: str) -> List[Dict]:
