@@ -8,41 +8,36 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
         try:
             await self.accept()
             print("WebSocket connected successfully!")
-            
-            # Send initial connection success message
+
             await self.send(text_data=json.dumps({
                 'type': 'connection',
                 'message': 'Connected to crypto price updates',
                 'status': 'success'
             }))
-            
-            # Start sending price updates after a short delay
+
             await asyncio.sleep(2)
             self.price_task = asyncio.create_task(self.send_price_updates())
-            
+
         except Exception as e:
             print(f"WebSocket connection error: {e}")
             await self.close()
-    
+
     async def disconnect(self, close_code):
         print(f"WebSocket disconnected: {close_code}")
         if hasattr(self, 'price_task'):
             self.price_task.cancel()
-    
+
     async def receive(self, text_data):
-        # Handle incoming messages from client
         try:
             data = json.loads(text_data)
             print(f"Received from client: {data}")
-            
-            # Handle different message types
+
             if data.get('type') == 'ping':
                 await self.send(text_data=json.dumps({
                     'type': 'pong',
                     'timestamp': data.get('timestamp')
                 }))
             elif data.get('type') == 'subscribe':
-                # Handle subscription to specific coins
                 coins = data.get('coins', ['bitcoin', 'ethereum', 'cardano'])
                 await self.send(text_data=json.dumps({
                     'type': 'subscription',
@@ -50,13 +45,12 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                     'coins': coins
                 }))
             else:
-                # Echo back for testing
                 await self.send(text_data=json.dumps({
                     'type': 'echo',
                     'original_message': data,
                     'server_message': 'Message received successfully'
                 }))
-                
+
         except json.JSONDecodeError:
             await self.send(text_data=json.dumps({
                 'type': 'error',
@@ -68,9 +62,8 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                 'type': 'error',
                 'message': f'Server error: {str(e)}'
             }))
-    
+
     async def send_price_updates(self):
-        """Send crypto price updates every 30 seconds"""
         try:
             while True:
                 try:
@@ -81,26 +74,25 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                         'timestamp': asyncio.get_event_loop().time()
                     }))
                     print("Sent price update successfully")
-                    await asyncio.sleep(30)  # Update every 30 seconds
-                    
+                    await asyncio.sleep(30)
+
                 except asyncio.CancelledError:
                     print("Price update task cancelled")
                     break
                 except Exception as e:
                     print(f"Error in price update loop: {e}")
-                    # Send error message to client
                     await self.send(text_data=json.dumps({
                         'type': 'error',
                         'message': 'Failed to fetch price updates',
                         'error': str(e)
                     }))
-                    await asyncio.sleep(10)  # Wait before retrying
-                    
+                    await asyncio.sleep(10)
+
         except Exception as e:
             print(f"Fatal error in send_price_updates: {e}")
-    
+
     async def fetch_crypto_prices(self):
-        """Fetch crypto prices from CoinGecko API with better error handling"""
+        """Fetch crypto prices using proxy to avoid blocking"""
         try:
             url = "https://api.coingecko.com/api/v3/simple/price"
             params = {
@@ -109,32 +101,28 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                 'include_24hr_change': 'true',
                 'include_last_updated_at': 'true'
             }
-            
-            # Set a timeout for the request
+
+            param_str = "&".join(f"{key}={value}" for key, value in params.items())
+            target_url = f"{url}?{param_str}"
+            proxy_url = f"https://api.allorigins.win/get?url={target_url}"
+
             timeout = aiohttp.ClientTimeout(total=10)
-            
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url, params=params) as response:
+                async with session.get(proxy_url) as response:
                     if response.status == 200:
-                        data = await response.json()
-                        print(f"Successfully fetched prices: {list(data.keys())}")
-                        return data
+                        wrapper = await response.json()
+                        if 'contents' in wrapper:
+                            contents = wrapper['contents'].encode('utf-8', 'surrogatepass').decode('utf-8', 'ignore')
+                            return json.loads(contents)
+                        else:
+                            raise Exception("Proxy response missing 'contents'")
                     else:
-                        print(f"CoinGecko API error: {response.status}")
-                        raise Exception(f"API returned status {response.status}")
-                        
-        except aiohttp.ClientError as e:
-            print(f"Network error fetching prices: {e}")
-            return self.get_fallback_prices()
-        except asyncio.TimeoutError:
-            print("Timeout fetching prices from CoinGecko")
-            return self.get_fallback_prices()
+                        raise Exception(f"Proxy failed with status {response.status}")
         except Exception as e:
-            print(f"Unexpected error fetching prices: {e}")
+            print(f"Proxy fetch failed: {e}")
             return self.get_fallback_prices()
-    
+
     def get_fallback_prices(self):
-        """Return mock prices when API fails"""
         return {
             'bitcoin': {
                 'usd': 45000 + (hash(str(asyncio.get_event_loop().time())) % 1000),
