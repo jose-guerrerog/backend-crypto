@@ -177,19 +177,23 @@ def remove_transaction(request, portfolio_id, transaction_id):
 def portfolio_analytics_view(request, portfolio_id):
     try:
         portfolio = Portfolio.objects.get(id=portfolio_id)
-    except Portfolio.DoesNotExist:
-        return Response({'error': 'Portfolio not found'}, status=404)
+        metrics = portfolio_analytics.calculate_portfolio_metrics(portfolio)
 
-    metrics = portfolio_analytics.calculate_portfolio_metrics(portfolio)
-    return Response({
-        'total_value': round(metrics.total_value, 2),
-        'total_cost': round(metrics.total_cost, 2),
-        'total_profit_loss': round(metrics.total_profit_loss, 2),
-        'profit_loss_percentage': round(metrics.profit_loss_percentage, 2),
-        'best_performer': metrics.best_performer,
-        'worst_performer': metrics.worst_performer,
-        'asset_allocation': {k: round(v, 2) for k, v in metrics.asset_allocation.items()}
-    })
+        # Debug: show transaction count and fetched prices
+        transactions = portfolio.transactions.all()
+        coin_ids = list(set(t.coin_id for t in transactions))
+        debug_info = {
+            'transaction_count': transactions.count(),
+            'coin_ids': coin_ids,
+        }
+
+        return JsonResponse({
+            'metrics': metrics.__dict__,
+            'debug': debug_info
+        })
+
+    except Portfolio.DoesNotExist:
+        return JsonResponse({'error': 'Portfolio not found'}, status=404)
 
 @api_view(['GET'])
 def search_coins(request):
