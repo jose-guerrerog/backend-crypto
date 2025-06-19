@@ -4,7 +4,6 @@ from django.core.cache import cache
 from typing import Dict, List, Optional
 from datetime import datetime
 from .models import Portfolio
-from .analytics import PortfolioAnalytics
 
 from dataclasses import dataclass
 
@@ -98,6 +97,7 @@ class CoinGeckoService:
 
         cache.set(cache_key, result, timeout=300)
         print(f"\ud83d\udce6 Cached data for: {coin_ids_str}")
+
         return result
 
     def get_detailed_coin_data(self, coin_ids: List[str]) -> Dict[str, CoinData]:
@@ -152,6 +152,105 @@ class CoinGeckoService:
         if data and 'coins' in data:
             return data['coins'][:20]
         return []
+
+class PortfolioAnalytics:
+    def __init__(self, coingecko_service: CoinGeckoService):
+        self.coingecko = coingecko_service
+
+    def calculate_portfolio_metrics(self, portfolio: Portfolio) -> PortfolioMetrics:
+        transactions = portfolio.transactions.all()
+        if not transactions.exists():
+            return PortfolioMetrics(
+                total_value=0,
+                total_cost=0,
+                total_profit_loss=0,
+                profit_loss_percentage=0,
+                best_performer=None,
+                worst_performer=None,
+                asset_allocation={}
+            )
+
+        coin_ids = list(set(t.coin_id for t in transactions))
+        current_prices = self.coingecko.get_detailed_coin_data(coin_ids)
+
+        holdings = {}
+
+        for transaction in transactions:
+            coin_id = transaction.coin_id
+            if coin_id not in holdings:
+                holdings[coin_id] = {
+                    'amount': 0,
+                    'cost_basis': 0,
+                    'coin_name': transaction.coin_name,
+                    'coin_symbol': transaction.coin_symbol
+                }
+
+            if transaction.transaction_type == 'buy':
+                holdings[coin_id]['amount'] += transaction.amount
+                holdings[coin_id]['cost_basis'] += transaction.amount * transaction.price_usd
+            else:
+                holdings[coin_id]['amount'] -= transaction.amount
+                holdings[coin_id]['cost_basis'] -= transaction.amount * transaction.price_usd
+
+        holdings = {k: v for k, v in holdings.items() if v['amount'] > 0}
+
+        total_value = 0
+        total_cost = 0
+        best_performer = None
+        worst_performer = None
+        asset_allocation = {}
+
+        for coin_id, holding in holdings.items():
+            current_price = current_prices.get(coin_id)
+            if current_price:
+                current_value = holding['amount'] * current_price.current_price
+                cost_basis = holding['cost_basis']
+                profit_loss = current_value - cost_basis
+                profit_loss_pct = (profit_loss / cost_basis * 100) if cost_basis > 0 else 0
+
+                holding['current_value'] = current_value
+                holding['profit_loss'] = profit_loss
+                holding['profit_loss_percentage'] = profit_loss_pct
+                holding['current_price'] = current_price.current_price
+
+                total_value += current_value
+                total_cost += cost_basis
+
+                if best_performer is None or profit_loss_pct > best_performer['profit_loss_percentage']:
+                    best_performer = {
+                        'coin_id': coin_id,
+                        'coin_name': holding['coin_name'],
+                        'coin_symbol': holding['coin_symbol'],
+                        'profit_loss_percentage': profit_loss_pct,
+                        'profit_loss': profit_loss
+                    }
+
+                if worst_performer is None or profit_loss_pct < worst_performer['profit_loss_percentage']:
+                    worst_performer = {
+                        'coin_id': coin_id,
+                        'coin_name': holding['coin_name'],
+                        'coin_symbol': holding['coin_symbol'],
+                        'profit_loss_percentage': profit_loss_pct,
+                        'profit_loss': profit_loss
+                    }
+
+        for coin_id, holding in holdings.items():
+            if 'current_value' in holding and total_value > 0:
+                allocation_pct = (holding['current_value'] / total_value) * 100
+                asset_allocation[f"{holding['coin_symbol']} ({holding['coin_name']})"] = allocation_pct
+
+        total_profit_loss = total_value - total_cost
+        profit_loss_percentage = (total_profit_loss / total_cost * 100) if total_cost > 0 else 0
+
+        return PortfolioMetrics(
+            total_value=total_value,
+            total_cost=total_cost,
+            total_profit_loss=total_profit_loss,
+            profit_loss_percentage=profit_loss_percentage,
+            best_performer=best_performer,
+            worst_performer=worst_performer,
+            asset_allocation=asset_allocation
+        )
 
 coingecko_service = CoinGeckoService()
 portfolio_analytics = PortfolioAnalytics(coingecko_service)
