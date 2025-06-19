@@ -1,5 +1,6 @@
 import requests
 import time
+import json
 from django.core.cache import cache
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -59,7 +60,7 @@ class CoinGeckoService:
             if response.status_code == 200:
                 proxy_data = response.json()
                 if 'contents' in proxy_data:
-                    return requests.utils.json.loads(proxy_data['contents'])
+                    return json.loads(proxy_data['contents'])
                 else:
                     print("⚠️ No 'contents' in AllOrigins response")
                     return None
