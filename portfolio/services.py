@@ -152,3 +152,6 @@ class CoinGeckoService:
         if data and 'coins' in data:
             return data['coins'][:20]
         return []
+
+coingecko_service = CoinGeckoService()
+portfolio_analytics = PortfolioAnalytics(coingecko_service)

@@ -237,6 +237,3 @@ def coin_prices(request):
     except Exception as e:
         print(f"Price fetch error: {e}")
         return Response({'error': str(e)}, status=500)
-
-coingecko_service = CoinGeckoService()
-portfolio_analytics = PortfolioAnalytics(coingecko_service)
