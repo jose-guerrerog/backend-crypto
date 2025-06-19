@@ -4,6 +4,7 @@ from django.core.cache import cache
 from typing import Dict, List, Optional
 from datetime import datetime
 from .models import Portfolio
+from .analytics import PortfolioAnalytics
 
 from dataclasses import dataclass
 
@@ -50,7 +51,7 @@ class CoinGeckoService:
             if response.status_code == 200:
                 return response.json()
             else:
-                print(f"❌ API Error {response.status_code}: {response.text}")
+                print(f"\u274c API Error {response.status_code}: {response.text}")
                 return None
         except requests.exceptions.RequestException as e:
             print(f"Request error: {e}")
@@ -65,7 +66,7 @@ class CoinGeckoService:
         cache_key = f"coin_data:{coin_ids_str}"
         cached_data = cache.get(cache_key)
         if cached_data:
-            print(f"✅ Using cached data for: {coin_ids_str}")
+            print(f"\u2705 Using cached data for: {coin_ids_str}")
             return cached_data
 
         params = {
@@ -96,8 +97,7 @@ class CoinGeckoService:
             )
 
         cache.set(cache_key, result, timeout=300)
-        print(f"📦 Cached data for: {coin_ids_str}")
-
+        print(f"\ud83d\udce6 Cached data for: {coin_ids_str}")
         return result
 
     def get_detailed_coin_data(self, coin_ids: List[str]) -> Dict[str, CoinData]:
@@ -110,7 +110,7 @@ class CoinGeckoService:
 
         cached = cache.get(cache_key)
         if cached:
-            print(f"✅ Using cached detailed data for: {coin_ids_str}")
+            print(f"\u2705 Using cached detailed data for: {coin_ids_str}")
             return cached
 
         params = {
@@ -125,7 +125,7 @@ class CoinGeckoService:
 
         data = self._make_request("/coins/markets", params)
         if not data:
-            print(f"⚠️ CoinGecko returned no data for: {coin_ids_str}")
+            print(f"\u26a0\ufe0f CoinGecko returned no data for: {coin_ids_str}")
             return {}
 
         result = {}
@@ -143,7 +143,7 @@ class CoinGeckoService:
             )
 
         cache.set(cache_key, result, timeout=300)
-        print(f"📦 Cached detailed data for: {coin_ids_str}")
+        print(f"\ud83d\udce6 Cached detailed data for: {coin_ids_str}")
         return result
 
     def search_coins(self, query: str) -> List[Dict]:
