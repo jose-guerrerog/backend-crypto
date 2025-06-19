@@ -7,6 +7,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-CHANGE-THIS-IN-PRODUCTION-secretkey123456789')
 
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False').lower() in ('true', '1', 't')
 
@@ -169,6 +171,17 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20
 }
 
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "SSL": REDIS_URL.startswith("rediss://")
+        }
+    }
+}
+
 # ASGI configuration for WebSockets
 ASGI_APPLICATION = 'crypto_backend.asgi.application'
 
@@ -181,7 +194,7 @@ CHANNEL_LAYERS = {
 
 # Security settings (only in production)
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
+    # SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True

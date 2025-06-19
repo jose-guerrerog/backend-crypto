@@ -1,5 +1,6 @@
 import requests
 import time
+from django.core.cache import cache
 from typing import Dict, List, Optional
 from datetime import datetime
 from .models import Portfolio
@@ -67,7 +68,18 @@ class CoinGeckoService:
         if not coin_ids:
             return {}
 
-        coin_ids_str = ",".join(coin_ids[:250])
+        # Sort and join IDs to ensure cache consistency
+        coin_ids_sorted = sorted(coin_ids[:250])
+        coin_ids_str = ",".join(coin_ids_sorted)
+        cache_key = f"coin_data:{coin_ids_str}"
+
+        # Check cache
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            print(f"✅ Using cached data for: {coin_ids_str}")
+            return cached_data
+
+        # Prepare request params
         params = {
             'ids': coin_ids_str,
             'vs_currencies': 'usd',
@@ -77,10 +89,13 @@ class CoinGeckoService:
             'include_last_updated_at': 'true'
         }
 
+        # Call CoinGecko API
         data = self._make_request("/simple/price", params)
+
         if not data:
             return {}
 
+        # Format result
         result = {}
         for coin_id, coin_data in data.items():
             result[coin_id] = CoinData(
@@ -94,6 +109,10 @@ class CoinGeckoService:
                 volume_24h=coin_data.get('usd_24h_vol', 0),
                 last_updated=datetime.now()
             )
+
+        # Cache the result for 5 minutes (300 seconds)
+        cache.set(cache_key, result, timeout=300)
+        print(f"📦 Cached data for: {coin_ids_str}")
 
         return result
 
