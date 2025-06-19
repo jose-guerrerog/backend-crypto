@@ -63,7 +63,13 @@ class CoinGeckoService:
         coin_ids_sorted = sorted(coin_ids[:250])
         coin_ids_str = ",".join(coin_ids_sorted)
         cache_key = f"coin_data:{coin_ids_str}"
-        cached_data = cache.get(cache_key)
+        
+        try:
+            cached = cache.get(cache_key)
+        except Exception as e:
+            print(f"⚠️ Redis cache error: {e}")
+            cached = None
+
         if cached_data:
             print(f"\u2705 Using cached data for: {coin_ids_str}")
             return cached_data
@@ -108,7 +114,12 @@ class CoinGeckoService:
         coin_ids_str = ",".join(coin_ids_sorted)
         cache_key = f"detailed_data:{coin_ids_str}"
 
-        cached = cache.get(cache_key)
+        try:
+            cached = cache.get(cache_key)
+        except Exception as e:
+            print(f"⚠️ Redis cache error: {e}")
+        cached = None
+
         if cached:
             print(f"\u2705 Using cached detailed data for: {coin_ids_str}")
             return cached

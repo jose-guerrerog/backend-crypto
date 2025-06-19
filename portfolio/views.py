@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
 from .models import Portfolio
+from django.http import JsonResponse
 
 @csrf_exempt
 @api_view(['GET', 'POST'])
