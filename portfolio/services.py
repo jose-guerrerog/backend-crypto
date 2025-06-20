@@ -1,4 +1,3 @@
-# services.py
 import requests
 import time
 import json
@@ -11,70 +10,39 @@ logger = logging.getLogger(__name__)
 
 class CoinGeckoService:
     BASE_URL = "https://api.coingecko.com/api/v3"
+    PROXY_BASE = "https://api.allorigins.win/get"
 
     def __init__(self):
         self.session = requests.Session()
         self.last_request_time = 0
 
-    def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
+    def _proxy_request(self, endpoint: str, params: Dict) -> Optional[Dict]:
         try:
             now = time.time()
             elapsed = now - self.last_request_time
             if elapsed < 1.3:
                 time.sleep(1.3 - elapsed)
 
-            target_url = f"{self.BASE_URL}{endpoint}"
-            logger.info(f"🌐 Requesting CoinGecko directly: {target_url} with {params}")
-            response = self.session.get(target_url, params=params, timeout=10)
+            url = f"{self.BASE_URL}{endpoint}"
+            param_str = "&".join(f"{key}={value}" for key, value in params.items())
+            full_url = f"{url}?{param_str}"
+            proxy_url = f"{self.PROXY_BASE}?url={requests.utils.quote(full_url)}"
+
+            logger.info(f"🌐 Requesting CoinGecko via proxy: {proxy_url}")
+            response = self.session.get(proxy_url, timeout=10)
             self.last_request_time = time.time()
 
             if response.status_code == 200:
-                return response.json()
+                wrapper = response.json()
+                if 'contents' in wrapper:
+                    return json.loads(wrapper['contents'])
+                else:
+                    logger.warning("Proxy response missing 'contents'")
             else:
-                logger.warning(f"⚠️ CoinGecko direct request failed with status {response.status_code}")
-                return None
-        
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request exception while calling CoinGecko directly: {e}")
-            return None
-        # try:
-        #     now = time.time()
-        #     elapsed = now - self.last_request_time
-        #     if elapsed < 1.3:
-        #         time.sleep(1.3 - elapsed)
-
-        #     target_url = f"{self.BASE_URL}{endpoint}"
-        #     logger.info(f"🌐 Requesting CoinGecko directly: {target_url} with {params}")
-
-        #     # param_str = "&".join(f"{key}={value}" for key, value in params.items())
-
-        #     # proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url + '?' + param_str)}"
-
-        #     # logger.info(f"Requesting CoinGecko (via proxy): {proxy_url}")
-        #     # response = self.session.get(proxy_url, timeout=10)
-        #     response = self.session.get(target_url, params=params, timeout=10)
-
-        #     # response = self.session.get(target_url, params=params, timeout=10)
-
-        #     self.last_request_time = time.time()
-
-        #     if response.status_code == 200:
-        #         proxy_data = response.json()
-        #         if 'contents' in proxy_data:
-        #             try:
-        #                 return json.loads(proxy_data['contents'])
-        #             except json.JSONDecodeError as e:
-        #                 logger.error(f"JSON decode error from proxy response: {e}")
-        #                 return None
-        #         else:
-        #             logger.warning("Proxy response missing 'contents'")
-        #             return None
-        #     else:
-        #         logger.error(f"Proxy request failed with status {response.status_code}")
-        #         return None
-        # except requests.exceptions.RequestException as e:
-        #     logger.error(f"Request exception while calling CoinGecko: {e}")
-        #     return None
+                logger.warning(f"Proxy request failed with {response.status_code}")
+        except Exception as e:
+            logger.error(f"Proxy request failed: {e}")
+        return None
 
     def get_current_prices(self, coin_ids: List[str]) -> Dict[str, float]:
         endpoint = "/simple/price"
@@ -82,11 +50,15 @@ class CoinGeckoService:
             "ids": ",".join(coin_ids),
             "vs_currencies": "usd"
         }
-        result = self._make_request(endpoint, params)
-        if result is None:
-            logger.warning(f"⚠️ CoinGecko returned no usable data for: {','.join(coin_ids)}")
-            return {}
-        return result
+
+        # Try proxy request
+        prices = self._proxy_request(endpoint, params)
+        if prices:
+            logger.info(f"✅ CoinGecko prices fetched: {prices}")
+            return prices
+
+        logger.warning(f"⚠️ CoinGecko returned no usable data for: {','.join(coin_ids)}")
+        return {}
 
 coingecko_service = CoinGeckoService()
 
@@ -109,12 +81,9 @@ class PortfolioAnalytics:
                 asset_allocation={}
             )
 
-        # Normalize coin_ids
         coin_ids = list(set(tx.coin_id.lower() for tx in transactions))
         prices = self.price_service.get_current_prices(coin_ids)
-        print("📉 CoinGecko prices:", prices)
-        print("🪙 Coin IDs being used:", coin_ids)
-        logger.info(f"🔍 CoinGecko prices fetched:\n{json.dumps(prices, indent=2)}")
+        logger.info(f"🔍 CoinGecko prices fetched:\n{prices}")
 
         if not prices:
             return PortfolioMetrics(
@@ -130,23 +99,20 @@ class PortfolioAnalytics:
         performance = {}
 
         for tx in transactions:
-            coin_id = tx.coin_id.lower()
-            current_price = prices.get(coin_id, {}).get("usd", 0)
+            current_price = prices.get(tx.coin_id.lower(), {}).get("usd", 0)
             value = tx.amount * current_price
             cost = tx.amount * tx.price_usd
 
-            logger.debug(f"📈 {coin_id}: current_price={current_price}, amount={tx.amount}, value={value}, cost={cost}")
-
-            if coin_id not in performance:
-                performance[coin_id] = {
+            if tx.coin_id not in performance:
+                performance[tx.coin_id] = {
                     "cost": 0,
                     "value": 0,
                     "name": tx.coin_name,
                     "symbol": tx.coin_symbol
                 }
 
-            performance[coin_id]["cost"] += cost
-            performance[coin_id]["value"] += value
+            performance[tx.coin_id]["cost"] += cost
+            performance[tx.coin_id]["value"] += value
 
         total_cost = sum(p["cost"] for p in performance.values())
         total_value = sum(p["value"] for p in performance.values())
@@ -185,8 +151,6 @@ class PortfolioAnalytics:
             data["name"]: (data["value"] / total_value * 100 if total_value else 0)
             for data in performance.values()
         }
-
-        logger.debug(f"📊 Final Asset Allocation:\n{json.dumps(asset_allocation, indent=2)}")
 
         return PortfolioMetrics(
             total_value=total_value,

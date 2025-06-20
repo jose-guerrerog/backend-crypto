@@ -10,56 +10,55 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         try:
             await self.accept()
-            logger.info("WebSocket connected successfully!")
-            await self.send(text_data=json.dumps({
+            logger.info("🟢 WebSocket connected")
+            await self.send(json.dumps({
                 'type': 'connection',
                 'message': 'Connected to crypto price updates',
                 'status': 'success'
             }))
-            await asyncio.sleep(2)
             self.price_task = asyncio.create_task(self.send_price_updates())
         except Exception as e:
             logger.error(f"WebSocket connection error: {e}")
             await self.close()
 
     async def disconnect(self, close_code):
-        logger.info(f"WebSocket disconnected: {close_code}")
+        logger.info(f"🔌 WebSocket disconnected: {close_code}")
         if hasattr(self, 'price_task'):
             self.price_task.cancel()
-            logger.info("Price update task cancelled")
+            logger.info("⛔ Price update task cancelled")
 
     async def receive(self, text_data):
         try:
             data = json.loads(text_data)
-            logger.info(f"Received from client: {data}")
+            logger.info(f"📩 Received from client: {data}")
 
             if data.get('type') == 'ping':
-                await self.send(text_data=json.dumps({
-                    'type': 'pong',
-                    'timestamp': data.get('timestamp')
-                }))
+                await self.send(json.dumps({'type': 'pong', 'timestamp': data.get('timestamp')}))
+
             elif data.get('type') == 'subscribe':
                 coins = data.get('coins', ['bitcoin', 'ethereum', 'cardano'])
-                await self.send(text_data=json.dumps({
+                self.coins = coins  # Store subscribed coins
+                await self.send(json.dumps({
                     'type': 'subscription',
-                    'message': f'Subscribed to {", ".join(coins)}',
+                    'message': f'Subscribed to: {", ".join(coins)}',
                     'coins': coins
                 }))
+
             else:
-                await self.send(text_data=json.dumps({
+                await self.send(json.dumps({
                     'type': 'echo',
                     'original_message': data,
                     'server_message': 'Message received successfully'
                 }))
         except json.JSONDecodeError:
-            logger.warning("Invalid JSON received")
-            await self.send(text_data=json.dumps({
+            logger.warning("❌ Invalid JSON received")
+            await self.send(json.dumps({
                 'type': 'error',
                 'message': 'Invalid JSON format'
             }))
         except Exception as e:
-            logger.error(f"Error handling WebSocket message: {e}")
-            await self.send(text_data=json.dumps({
+            logger.error(f"⚠️ WebSocket error: {e}")
+            await self.send(json.dumps({
                 'type': 'error',
                 'message': f'Server error: {str(e)}'
             }))
@@ -69,49 +68,60 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
             while True:
                 try:
                     prices = await self.fetch_crypto_prices()
-                    await self.send(text_data=json.dumps({
+                    await self.send(json.dumps({
                         'type': 'price_update',
                         'data': prices,
                         'timestamp': asyncio.get_event_loop().time()
                     }))
-                    logger.info("Sent price update successfully")
+                    logger.info("📤 Sent price update")
                     await asyncio.sleep(30)
                 except asyncio.CancelledError:
-                    logger.info("Price update task cancelled")
+                    logger.info("🛑 Price update loop cancelled")
                     break
                 except Exception as e:
-                    logger.error(f"Error in price update loop: {e}")
-                    await self.send(text_data=json.dumps({
+                    logger.error(f"💥 Error in price loop: {e}")
+                    await self.send(json.dumps({
                         'type': 'error',
                         'message': 'Failed to fetch price updates',
                         'error': str(e)
                     }))
                     await asyncio.sleep(10)
         except Exception as e:
-            logger.critical(f"Fatal error in send_price_updates: {e}")
+            logger.critical(f"🔥 Fatal error in update loop: {e}")
 
     async def fetch_crypto_prices(self):
         try:
+            coins = getattr(self, 'coins', ['bitcoin', 'ethereum', 'cardano'])
+            ids = ",".join(coins)
             url = "https://api.coingecko.com/api/v3/simple/price"
             params = {
-                'ids': 'bitcoin,ethereum,cardano,polkadot,chainlink',
+                'ids': ids,
                 'vs_currencies': 'usd',
                 'include_24hr_change': 'true',
                 'include_last_updated_at': 'true'
             }
 
+            # Build proxy URL
             query = "&".join(f"{k}={v}" for k, v in params.items())
             target_url = f"{url}?{query}"
+            proxy_url = f"https://api.allorigins.win/get?url={target_url}"
 
+            logger.info(f"🌍 Requesting prices via proxy: {proxy_url}")
             timeout = aiohttp.ClientTimeout(total=10)
+
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(target_url) as response:
+                async with session.get(proxy_url) as response:
                     if response.status == 200:
-                        return await response.json()
+                        wrapper = await response.json()
+                        if 'contents' in wrapper:
+                            contents = wrapper['contents']
+                            return json.loads(contents)
+                        else:
+                            raise Exception("Missing 'contents' in proxy response")
                     else:
-                        raise Exception(f"CoinGecko API error: {response.status}")
+                        raise Exception(f"Proxy failed with status {response.status}")
         except Exception as e:
-            logger.warning(f"Direct CoinGecko fetch failed: {e}")
+            logger.warning(f"🔁 Proxy fetch failed: {e}")
             return self.get_fallback_prices()
 
     def get_fallback_prices(self):
