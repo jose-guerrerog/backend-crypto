@@ -24,30 +24,57 @@ class CoinGeckoService:
                 time.sleep(1.3 - elapsed)
 
             target_url = f"{self.BASE_URL}{endpoint}"
-            param_str = "&".join(f"{key}={value}" for key, value in params.items())
-            proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url + '?' + param_str)}"
-
-            logger.info(f"Requesting CoinGecko (via proxy): {proxy_url}")
-            response = self.session.get(proxy_url, timeout=10)
+            logger.info(f"🌐 Requesting CoinGecko directly: {target_url} with {params}")
+            response = self.session.get(target_url, params=params, timeout=10)
             self.last_request_time = time.time()
 
             if response.status_code == 200:
-                proxy_data = response.json()
-                if 'contents' in proxy_data:
-                    try:
-                        return json.loads(proxy_data['contents'])
-                    except json.JSONDecodeError as e:
-                        logger.error(f"JSON decode error from proxy response: {e}")
-                        return None
-                else:
-                    logger.warning("Proxy response missing 'contents'")
-                    return None
+                return response.json()
             else:
-                logger.error(f"Proxy request failed with status {response.status_code}")
+                logger.warning(f"⚠️ CoinGecko direct request failed with status {response.status_code}")
                 return None
+        
         except requests.exceptions.RequestException as e:
-            logger.error(f"Request exception while calling CoinGecko: {e}")
+            logger.error(f"Request exception while calling CoinGecko directly: {e}")
             return None
+        # try:
+        #     now = time.time()
+        #     elapsed = now - self.last_request_time
+        #     if elapsed < 1.3:
+        #         time.sleep(1.3 - elapsed)
+
+        #     target_url = f"{self.BASE_URL}{endpoint}"
+        #     logger.info(f"🌐 Requesting CoinGecko directly: {target_url} with {params}")
+
+        #     # param_str = "&".join(f"{key}={value}" for key, value in params.items())
+
+        #     # proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url + '?' + param_str)}"
+
+        #     # logger.info(f"Requesting CoinGecko (via proxy): {proxy_url}")
+        #     # response = self.session.get(proxy_url, timeout=10)
+        #     response = self.session.get(target_url, params=params, timeout=10)
+
+        #     # response = self.session.get(target_url, params=params, timeout=10)
+
+        #     self.last_request_time = time.time()
+
+        #     if response.status_code == 200:
+        #         proxy_data = response.json()
+        #         if 'contents' in proxy_data:
+        #             try:
+        #                 return json.loads(proxy_data['contents'])
+        #             except json.JSONDecodeError as e:
+        #                 logger.error(f"JSON decode error from proxy response: {e}")
+        #                 return None
+        #         else:
+        #             logger.warning("Proxy response missing 'contents'")
+        #             return None
+        #     else:
+        #         logger.error(f"Proxy request failed with status {response.status_code}")
+        #         return None
+        # except requests.exceptions.RequestException as e:
+        #     logger.error(f"Request exception while calling CoinGecko: {e}")
+        #     return None
 
     def get_current_prices(self, coin_ids: List[str]) -> Dict[str, float]:
         endpoint = "/simple/price"
@@ -85,6 +112,8 @@ class PortfolioAnalytics:
         # Normalize coin_ids
         coin_ids = list(set(tx.coin_id.lower() for tx in transactions))
         prices = self.price_service.get_current_prices(coin_ids)
+        print("📉 CoinGecko prices:", prices)
+        print("🪙 Coin IDs being used:", coin_ids)
         logger.info(f"🔍 CoinGecko prices fetched:\n{json.dumps(prices, indent=2)}")
 
         if not prices:

@@ -102,22 +102,16 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
 
             query = "&".join(f"{k}={v}" for k, v in params.items())
             target_url = f"{url}?{query}"
-            proxy_url = f"https://api.allorigins.win/get?url={target_url}"
 
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(proxy_url) as response:
+                async with session.get(target_url) as response:
                     if response.status == 200:
-                        wrapper = await response.json()
-                        if 'contents' in wrapper:
-                            contents = wrapper['contents'].encode('utf-8', 'surrogatepass').decode('utf-8', 'ignore')
-                            return json.loads(contents)
-                        else:
-                            raise Exception("Proxy response missing 'contents'")
+                        return await response.json()
                     else:
-                        raise Exception(f"Proxy failed with status {response.status}")
+                        raise Exception(f"CoinGecko API error: {response.status}")
         except Exception as e:
-            logger.warning(f"Proxy fetch failed: {e}")
+            logger.warning(f"Direct CoinGecko fetch failed: {e}")
             return self.get_fallback_prices()
 
     def get_fallback_prices(self):
