@@ -17,7 +17,6 @@ class CoinGeckoService:
 
     def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
         try:
-            # Respect CoinGecko rate limits
             now = time.time()
             elapsed = now - self.last_request_time
             if elapsed < 1.3:
@@ -106,17 +105,17 @@ class PortfolioAnalytics:
 
         for tx in transactions:
             current_price = prices.get(tx.coin_name, {}).get("usd", 0)
-            value = tx.amount * current_price
-            cost = tx.amount * tx.purchase_price
+            tx_cost = tx.amount * tx.price_usd
+            tx_value = tx.amount * current_price
 
-            total_cost += cost
-            total_value += value
+            total_cost += tx_cost
+            total_value += tx_value
 
             performance.setdefault(tx.coin_name, {"cost": 0, "value": 0})
-            performance[tx.coin_name]["cost"] += cost
-            performance[tx.coin_name]["value"] += value
+            performance[tx.coin_name]["cost"] += tx_cost
+            performance[tx.coin_name]["value"] += tx_value
 
-            logger.debug(f"{tx.coin_name}: current_price={current_price}, amount={tx.amount}, cost={cost}, value={value}")
+            logger.debug(f"{tx.coin_name}: price_usd={tx.price_usd}, current_price={current_price}, amount={tx.amount}, cost={tx_cost}, value={tx_value}")
 
         profit_loss = total_value - total_cost
         profit_loss_pct = (profit_loss / total_cost * 100) if total_cost else 0
@@ -139,9 +138,10 @@ class PortfolioAnalytics:
                 worst = coin
 
         # Calculate asset allocation
-        asset_allocation = {}
-        for coin, data in performance.items():
-            asset_allocation[coin] = (data["value"] / total_value * 100) if total_value else 0
+        asset_allocation = {
+            coin: (data["value"] / total_value * 100) if total_value else 0
+            for coin, data in performance.items()
+        }
 
         logger.info(f"✅ Computed metrics - Total: ${total_value:.2f}, Cost: ${total_cost:.2f}, PnL: ${profit_loss:.2f} ({profit_loss_pct:.2f}%)")
 
