@@ -4,7 +4,6 @@ import json
 from django.core.cache import cache
 from typing import Dict, List, Optional
 from datetime import datetime
-from urllib.parse import urlencode, quote
 from .models import Portfolio
 
 from dataclasses import dataclass
@@ -37,44 +36,49 @@ class CoinGeckoService:
     def __init__(self):
         self.session = requests.Session()
         self.last_request_time = 0
-        self.rate_limit_delay = 1.2
+        self.rate_limit_delay = 1.2  # Free tier: 30 requests/minute
+        
+        # Add headers to identify your app (recommended by CoinGecko)
+        self.session.headers.update({
+            'User-Agent': 'CryptoPortfolioApp/1.0',
+            'Accept': 'application/json'
+        })
 
     def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
+        """Make direct request to CoinGecko API with rate limiting"""
+        # Rate limiting
         current_time = time.time()
         time_since_last = current_time - self.last_request_time
         if time_since_last < self.rate_limit_delay:
             time.sleep(self.rate_limit_delay - time_since_last)
 
         try:
-            target_url = f"{self.BASE_URL}{endpoint}"
-            if params:
-                query = urlencode(params)
-                target_url = f"{target_url}?{query}"
-
-            proxy_url = f"https://api.allorigins.win/get?url={quote(target_url)}"
-            response = self.session.get(proxy_url, timeout=10)
+            url = f"{self.BASE_URL}{endpoint}"
+            print(f"🔍 Making request to: {url}")
+            
+            response = self.session.get(url, params=params, timeout=15)
             self.last_request_time = time.time()
-
+            
+            print(f"📊 Response status: {response.status_code}")
+            
             if response.status_code == 200:
-                proxy_data = response.json()
-                if 'contents' in proxy_data:
-                    try:
-                        contents = proxy_data['contents'].encode('utf-8', 'surrogatepass').decode('utf-8', 'ignore')
-                        return json.loads(contents)
-                    except json.JSONDecodeError as e:
-                        print(f"❌ JSON decode error: {e}")
-                        return None
-                else:
-                    print("⚠️ No 'contents' in AllOrigins response")
-                    return None
+                data = response.json()
+                print(f"✅ Success: Got data for {len(data) if isinstance(data, (list, dict)) else 'unknown'} items")
+                return data
+            elif response.status_code == 429:
+                print("⚠️ Rate limited by CoinGecko, waiting 60 seconds...")
+                time.sleep(60)
+                return self._make_request(endpoint, params)
             else:
-                print(f"❌ Proxy request failed [{response.status_code}] on {proxy_url}")
+                print(f"❌ API request failed [{response.status_code}]: {response.text}")
                 return None
+                
         except requests.exceptions.RequestException as e:
-            print(f"Request error: {e}")
+            print(f"❌ Request error: {e}")
             return None
 
     def get_coin_data(self, coin_ids: List[str]) -> Dict[str, CoinData]:
+        """Get basic price data for coins"""
         if not coin_ids:
             return {}
 
@@ -82,16 +86,16 @@ class CoinGeckoService:
         coin_ids_str = ",".join(coin_ids_sorted)
         cache_key = f"coin_data:{coin_ids_str}"
 
+        # Try cache first
         try:
             cached = cache.get(cache_key)
+            if cached:
+                print(f"✅ Using cached data for: {coin_ids_str}")
+                return cached
         except Exception as e:
-            print(f"⚠️ Redis cache error: {e}")
-            cached = None
+            print(f"⚠️ Cache error: {e}")
 
-        if cached:
-            print(f"✅ Using cached data for: {coin_ids_str}")
-            return cached
-
+        # API request
         params = {
             'ids': coin_ids_str,
             'vs_currencies': 'usd',
@@ -103,6 +107,7 @@ class CoinGeckoService:
 
         data = self._make_request("/simple/price", params)
         if not data:
+            print(f"❌ No data returned for: {coin_ids_str}")
             return {}
 
         result = {}
@@ -119,12 +124,17 @@ class CoinGeckoService:
                 last_updated=datetime.now()
             )
 
-        cache.set(cache_key, result, timeout=300)
-        print(f"📦 Cached data for: {coin_ids_str}")
+        # Cache the result
+        try:
+            cache.set(cache_key, result, timeout=300)  # 5 minutes
+            print(f"📦 Cached data for: {coin_ids_str}")
+        except Exception as e:
+            print(f"⚠️ Cache set error: {e}")
 
         return result
 
     def get_detailed_coin_data(self, coin_ids: List[str]) -> Dict[str, CoinData]:
+        """Get detailed market data for coins"""
         if not coin_ids:
             return {}
 
@@ -132,19 +142,19 @@ class CoinGeckoService:
         coin_ids_str = ",".join(coin_ids_sorted)
         cache_key = f"detailed_data:{coin_ids_str}"
 
+        # Try cache first
         try:
             cached = cache.get(cache_key)
+            if cached:
+                print(f"✅ Using cached detailed data for: {coin_ids_str}")
+                return cached
         except Exception as e:
-            print(f"⚠️ Redis cache error: {e}")
-            cached = None
+            print(f"⚠️ Cache error: {e}")
 
-        if cached:
-            print(f"✅ Using cached detailed data for: {coin_ids_str}")
-            return cached
-
+        # API request
         params = {
             'ids': coin_ids_str,
-            'vs_currencies': 'usd',
+            'vs_currency': 'usd',
             'order': 'market_cap_desc',
             'per_page': 250,
             'page': 1,
@@ -154,7 +164,7 @@ class CoinGeckoService:
 
         data = self._make_request("/coins/markets", params)
         if not data or not isinstance(data, list):
-            print(f"⚠️ CoinGecko returned no usable data for: {coin_ids_str}")
+            print(f"❌ No usable detailed data for: {coin_ids_str}")
             return {}
 
         result = {}
@@ -171,17 +181,41 @@ class CoinGeckoService:
                 last_updated=datetime.now()
             )
 
-        cache.set(cache_key, result, timeout=300)
-        print(f"📦 Cached detailed data for: {coin_ids_str}")
+        # Cache the result
+        try:
+            cache.set(cache_key, result, timeout=300)  # 5 minutes
+            print(f"📦 Cached detailed data for: {coin_ids_str}")
+        except Exception as e:
+            print(f"⚠️ Cache set error: {e}")
+
         return result
 
     def search_coins(self, query: str) -> List[Dict]:
+        """Search for coins by name/symbol"""
+        cache_key = f"search:{query.lower()}"
+        
+        # Try cache first
+        try:
+            cached = cache.get(cache_key)
+            if cached:
+                return cached
+        except Exception as e:
+            print(f"⚠️ Cache error: {e}")
+
         params = {'query': query}
         data = self._make_request("/search", params)
+        
         if data and 'coins' in data:
-            return data['coins'][:20]
+            result = data['coins'][:20]
+            try:
+                cache.set(cache_key, result, timeout=3600)  # 1 hour
+            except Exception as e:
+                print(f"⚠️ Cache set error: {e}")
+            return result
+        
         return []
 
+# Rest of your code stays the same...
 class PortfolioAnalytics:
     def __init__(self, coingecko_service: CoinGeckoService):
         self.coingecko = coingecko_service
@@ -281,5 +315,6 @@ class PortfolioAnalytics:
             asset_allocation=asset_allocation
         )
 
+# Create instances
 coingecko_service = CoinGeckoService()
 portfolio_analytics = PortfolioAnalytics(coingecko_service)
