@@ -92,7 +92,6 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
             print(f"Fatal error in send_price_updates: {e}")
 
     async def fetch_crypto_prices(self):
-        """Fetch crypto prices using proxy to avoid blocking"""
         try:
             url = "https://api.coingecko.com/api/v3/simple/price"
             params = {
@@ -102,10 +101,9 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                 'include_last_updated_at': 'true'
             }
 
-            from urllib.parse import urlencode, quote
-            param_str = urlencode(params)
-            target_url = f"{url}?{param_str}"
-            proxy_url = f"https://api.allorigins.win/get?url={quote(target_url)}"
+            query = "&".join(f"{k}={v}" for k, v in params.items())
+            target_url = f"{url}?{query}"
+            proxy_url = f"https://api.allorigins.win/get?url={target_url}"
 
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
