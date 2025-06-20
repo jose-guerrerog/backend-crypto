@@ -4,6 +4,7 @@ import json
 from django.core.cache import cache
 from typing import Dict, List, Optional
 from datetime import datetime
+from urllib.parse import urlencode, quote
 from .models import Portfolio
 
 from dataclasses import dataclass
@@ -47,10 +48,10 @@ class CoinGeckoService:
         try:
             target_url = f"{self.BASE_URL}{endpoint}"
             if params:
-                param_str = "&".join(f"{key}={value}" for key, value in params.items())
-                target_url = f"{target_url}?{param_str}"
+                query = urlencode(params)
+                target_url = f"{target_url}?{query}"
 
-            proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url)}"
+            proxy_url = f"https://api.allorigins.win/get?url={quote(target_url)}"
             response = self.session.get(proxy_url, timeout=10)
             self.last_request_time = time.time()
 
@@ -58,7 +59,8 @@ class CoinGeckoService:
                 proxy_data = response.json()
                 if 'contents' in proxy_data:
                     try:
-                        return json.loads(proxy_data['contents'])
+                        contents = proxy_data['contents'].encode('utf-8', 'surrogatepass').decode('utf-8', 'ignore')
+                        return json.loads(contents)
                     except json.JSONDecodeError as e:
                         print(f"❌ JSON decode error: {e}")
                         return None

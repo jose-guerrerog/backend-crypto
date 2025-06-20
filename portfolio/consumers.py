@@ -1,6 +1,7 @@
 import json
 import asyncio
 import aiohttp
+from urllib.parse import urlencode, quote
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 class CryptoPriceConsumer(AsyncWebsocketConsumer):
@@ -92,7 +93,6 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
             print(f"Fatal error in send_price_updates: {e}")
 
     async def fetch_crypto_prices(self):
-        """Fetch crypto prices using proxy to avoid blocking"""
         try:
             url = "https://api.coingecko.com/api/v3/simple/price"
             params = {
@@ -102,9 +102,9 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                 'include_last_updated_at': 'true'
             }
 
-            param_str = "&".join(f"{key}={value}" for key, value in params.items())
-            target_url = f"{url}?{param_str}"
-            proxy_url = f"https://api.allorigins.win/get?url={target_url}"
+            query = urlencode(params)
+            encoded_url = quote(f"{url}?{query}")
+            proxy_url = f"https://api.allorigins.win/get?url={encoded_url}"
 
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -124,24 +124,9 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
 
     def get_fallback_prices(self):
         return {
-            'bitcoin': {
-                'usd': 45000 + (hash(str(asyncio.get_event_loop().time())) % 1000),
-                'usd_24h_change': 2.5
-            },
-            'ethereum': {
-                'usd': 3000 + (hash(str(asyncio.get_event_loop().time())) % 100),
-                'usd_24h_change': 1.8
-            },
-            'cardano': {
-                'usd': 0.42,
-                'usd_24h_change': -0.5
-            },
-            'polkadot': {
-                'usd': 15.5,
-                'usd_24h_change': -0.8
-            },
-            'chainlink': {
-                'usd': 10.25,
-                'usd_24h_change': 3.2
-            }
+            'bitcoin': {'usd': 45000, 'usd_24h_change': 2.5},
+            'ethereum': {'usd': 3000, 'usd_24h_change': 1.8},
+            'cardano': {'usd': 0.42, 'usd_24h_change': -0.5},
+            'polkadot': {'usd': 15.5, 'usd_24h_change': -0.8},
+            'chainlink': {'usd': 10.25, 'usd_24h_change': 3.2}
         }
