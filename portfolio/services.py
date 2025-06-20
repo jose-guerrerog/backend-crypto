@@ -4,6 +4,7 @@ import json
 from django.core.cache import cache
 from typing import Dict, List, Optional
 from datetime import datetime
+from urllib.parse import urlencode, quote
 from .models import Portfolio
 
 from dataclasses import dataclass
@@ -36,105 +37,44 @@ class CoinGeckoService:
     def __init__(self):
         self.session = requests.Session()
         self.last_request_time = 0
-        self.rate_limit_delay = 1.2  # Free tier: 30 requests/minute
-        
-        # Add headers to identify your app (recommended by CoinGecko)
-        self.session.headers.update({
-            'User-Agent': 'CryptoPortfolioApp/1.0',
-            'Accept': 'application/json'
-        })
+        self.rate_limit_delay = 1.2
 
     def _make_request(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
-        """Make direct request to CoinGecko API with rate limiting"""
-        # Rate limiting
         current_time = time.time()
         time_since_last = current_time - self.last_request_time
         if time_since_last < self.rate_limit_delay:
             time.sleep(self.rate_limit_delay - time_since_last)
 
         try:
-            url = f"{self.BASE_URL}{endpoint}"
-            print(f"🔍 Making request to: {url}")
-            
-            response = self.session.get(url, params=params, timeout=15)
+            target_url = f"{self.BASE_URL}{endpoint}"
+            if params:
+                query = urlencode(params)
+                target_url = f"{target_url}?{query}"
+
+            proxy_url = f"https://api.allorigins.win/get?url={quote(target_url)}"
+            response = self.session.get(proxy_url, timeout=10)
             self.last_request_time = time.time()
-            
-            print(f"📊 Response status: {response.status_code}")
-            
+
             if response.status_code == 200:
-                data = response.json()
-                print(f"✅ Success: Got data for {len(data) if isinstance(data, (list, dict)) else 'unknown'} items")
-                return data
-            elif response.status_code == 429:
-                print("⚠️ Rate limited by CoinGecko, waiting 60 seconds...")
-                time.sleep(60)
-                return self._make_request(endpoint, params)
+                proxy_data = response.json()
+                if 'contents' in proxy_data:
+                    try:
+                        contents = proxy_data['contents'].encode('utf-8', 'surrogatepass').decode('utf-8', 'ignore')
+                        return json.loads(contents)
+                    except json.JSONDecodeError as e:
+                        print(f"❌ JSON decode error: {e}")
+                        return None
+                else:
+                    print("⚠️ No 'contents' in AllOrigins response")
+                    return None
             else:
-                print(f"❌ API request failed [{response.status_code}]: {response.text}")
+                print(f"❌ Proxy request failed [{response.status_code}] on {proxy_url}")
                 return None
-                
         except requests.exceptions.RequestException as e:
-            print(f"❌ Request error: {e}")
+            print(f"Request error: {e}")
             return None
 
-    def get_coin_data(self, coin_ids: List[str]) -> Dict[str, CoinData]:
-        """Get basic price data for coins"""
-        if not coin_ids:
-            return {}
-
-        coin_ids_sorted = sorted(coin_ids[:250])
-        coin_ids_str = ",".join(coin_ids_sorted)
-        cache_key = f"coin_data:{coin_ids_str}"
-
-        # Try cache first
-        try:
-            cached = cache.get(cache_key)
-            if cached:
-                print(f"✅ Using cached data for: {coin_ids_str}")
-                return cached
-        except Exception as e:
-            print(f"⚠️ Cache error: {e}")
-
-        # API request
-        params = {
-            'ids': coin_ids_str,
-            'vs_currencies': 'usd',
-            'include_market_cap': 'true',
-            'include_24hr_vol': 'true',
-            'include_24hr_change': 'true',
-            'include_last_updated_at': 'true'
-        }
-
-        data = self._make_request("/simple/price", params)
-        if not data:
-            print(f"❌ No data returned for: {coin_ids_str}")
-            return {}
-
-        result = {}
-        for coin_id, coin_data in data.items():
-            result[coin_id] = CoinData(
-                id=coin_id,
-                symbol="",
-                name="",
-                current_price=coin_data.get('usd', 0),
-                market_cap=coin_data.get('usd_market_cap', 0),
-                price_change_24h=0,
-                price_change_percentage_24h=coin_data.get('usd_24h_change', 0),
-                volume_24h=coin_data.get('usd_24h_vol', 0),
-                last_updated=datetime.now()
-            )
-
-        # Cache the result
-        try:
-            cache.set(cache_key, result, timeout=300)  # 5 minutes
-            print(f"📦 Cached data for: {coin_ids_str}")
-        except Exception as e:
-            print(f"⚠️ Cache set error: {e}")
-
-        return result
-
     def get_detailed_coin_data(self, coin_ids: List[str]) -> Dict[str, CoinData]:
-        """Get detailed market data for coins"""
         if not coin_ids:
             return {}
 
@@ -142,16 +82,16 @@ class CoinGeckoService:
         coin_ids_str = ",".join(coin_ids_sorted)
         cache_key = f"detailed_data:{coin_ids_str}"
 
-        # Try cache first
         try:
             cached = cache.get(cache_key)
-            if cached:
-                print(f"✅ Using cached detailed data for: {coin_ids_str}")
-                return cached
         except Exception as e:
-            print(f"⚠️ Cache error: {e}")
+            print(f"⚠️ Redis cache error: {e}")
+            cached = None
 
-        # API request
+        if cached:
+            print(f"✅ Using cached detailed data for: {coin_ids_str}")
+            return cached
+
         params = {
             'ids': coin_ids_str,
             'vs_currency': 'usd',
@@ -164,7 +104,7 @@ class CoinGeckoService:
 
         data = self._make_request("/coins/markets", params)
         if not data or not isinstance(data, list):
-            print(f"❌ No usable detailed data for: {coin_ids_str}")
+            print(f"⚠️ CoinGecko returned no usable data for: {coin_ids_str}")
             return {}
 
         result = {}
@@ -181,140 +121,6 @@ class CoinGeckoService:
                 last_updated=datetime.now()
             )
 
-        # Cache the result
-        try:
-            cache.set(cache_key, result, timeout=300)  # 5 minutes
-            print(f"📦 Cached detailed data for: {coin_ids_str}")
-        except Exception as e:
-            print(f"⚠️ Cache set error: {e}")
-
+        cache.set(cache_key, result, timeout=300)
+        print(f"📦 Cached detailed data for: {coin_ids_str}")
         return result
-
-    def search_coins(self, query: str) -> List[Dict]:
-        """Search for coins by name/symbol"""
-        cache_key = f"search:{query.lower()}"
-        
-        # Try cache first
-        try:
-            cached = cache.get(cache_key)
-            if cached:
-                return cached
-        except Exception as e:
-            print(f"⚠️ Cache error: {e}")
-
-        params = {'query': query}
-        data = self._make_request("/search", params)
-        
-        if data and 'coins' in data:
-            result = data['coins'][:20]
-            try:
-                cache.set(cache_key, result, timeout=3600)  # 1 hour
-            except Exception as e:
-                print(f"⚠️ Cache set error: {e}")
-            return result
-        
-        return []
-
-# Rest of your code stays the same...
-class PortfolioAnalytics:
-    def __init__(self, coingecko_service: CoinGeckoService):
-        self.coingecko = coingecko_service
-
-    def calculate_portfolio_metrics(self, portfolio: Portfolio) -> PortfolioMetrics:
-        transactions = portfolio.transactions.all()
-        if not transactions.exists():
-            return PortfolioMetrics(
-                total_value=0,
-                total_cost=0,
-                total_profit_loss=0,
-                profit_loss_percentage=0,
-                best_performer=None,
-                worst_performer=None,
-                asset_allocation={}
-            )
-
-        coin_ids = list(set(t.coin_id for t in transactions))
-        current_prices = self.coingecko.get_detailed_coin_data(coin_ids)
-
-        holdings = {}
-
-        for transaction in transactions:
-            coin_id = transaction.coin_id
-            if coin_id not in holdings:
-                holdings[coin_id] = {
-                    'amount': 0,
-                    'cost_basis': 0,
-                    'coin_name': transaction.coin_name,
-                    'coin_symbol': transaction.coin_symbol
-                }
-
-            if transaction.transaction_type == 'buy':
-                holdings[coin_id]['amount'] += transaction.amount
-                holdings[coin_id]['cost_basis'] += transaction.amount * transaction.price_usd
-            else:
-                holdings[coin_id]['amount'] -= transaction.amount
-                holdings[coin_id]['cost_basis'] -= transaction.amount * transaction.price_usd
-
-        holdings = {k: v for k, v in holdings.items() if v['amount'] > 0}
-
-        total_value = 0
-        total_cost = 0
-        best_performer = None
-        worst_performer = None
-        asset_allocation = {}
-
-        for coin_id, holding in holdings.items():
-            current_price = current_prices.get(coin_id)
-            if current_price:
-                current_value = holding['amount'] * current_price.current_price
-                cost_basis = holding['cost_basis']
-                profit_loss = current_value - cost_basis
-                profit_loss_pct = (profit_loss / cost_basis * 100) if cost_basis > 0 else 0
-
-                holding['current_value'] = current_value
-                holding['profit_loss'] = profit_loss
-                holding['profit_loss_percentage'] = profit_loss_pct
-                holding['current_price'] = current_price.current_price
-
-                total_value += current_value
-                total_cost += cost_basis
-
-                if best_performer is None or profit_loss_pct > best_performer['profit_loss_percentage']:
-                    best_performer = {
-                        'coin_id': coin_id,
-                        'coin_name': holding['coin_name'],
-                        'coin_symbol': holding['coin_symbol'],
-                        'profit_loss_percentage': profit_loss_pct,
-                        'profit_loss': profit_loss
-                    }
-
-                if worst_performer is None or profit_loss_pct < worst_performer['profit_loss_percentage']:
-                    worst_performer = {
-                        'coin_id': coin_id,
-                        'coin_name': holding['coin_name'],
-                        'coin_symbol': holding['coin_symbol'],
-                        'profit_loss_percentage': profit_loss_pct,
-                        'profit_loss': profit_loss
-                    }
-
-        for coin_id, holding in holdings.items():
-            if 'current_value' in holding and total_value > 0:
-                allocation_pct = (holding['current_value'] / total_value) * 100
-                asset_allocation[f"{holding['coin_symbol']} ({holding['coin_name']})"] = allocation_pct
-
-        total_profit_loss = total_value - total_cost
-        profit_loss_percentage = (total_profit_loss / total_cost * 100) if total_cost > 0 else 0
-
-        return PortfolioMetrics(
-            total_value=total_value,
-            total_cost=total_cost,
-            total_profit_loss=total_profit_loss,
-            profit_loss_percentage=profit_loss_percentage,
-            best_performer=best_performer,
-            worst_performer=worst_performer,
-            asset_allocation=asset_allocation
-        )
-
-# Create instances
-coingecko_service = CoinGeckoService()
-portfolio_analytics = PortfolioAnalytics(coingecko_service)
