@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Dict, Optional, List
 from .models import Portfolio, Transaction
-from .schemas import PortfolioMetrics
+from .schemas import PortfolioMetrics, Performer
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +60,7 @@ class CoinGeckoService:
             return {}
         return result
 
-
 coingecko_service = CoinGeckoService()
-
 
 class PortfolioAnalytics:
     def __init__(self, price_service: CoinGeckoService):
@@ -73,7 +71,6 @@ class PortfolioAnalytics:
         logger.info(f"🧠 Portfolio: {portfolio.name} ({portfolio.id}) - {transactions.count()} transactions")
 
         if not transactions.exists():
-            logger.warning(f"No transactions found for portfolio {portfolio.id}")
             return PortfolioMetrics(
                 total_value=0,
                 total_cost=0,
@@ -88,7 +85,6 @@ class PortfolioAnalytics:
         prices = self.price_service.get_current_prices(coin_ids)
 
         if not prices:
-            logger.warning("No current prices available, returning fallback metrics")
             return PortfolioMetrics(
                 total_value=0,
                 total_cost=0,
@@ -99,51 +95,61 @@ class PortfolioAnalytics:
                 asset_allocation={}
             )
 
-        total_cost = 0
-        total_value = 0
         performance = {}
 
         for tx in transactions:
             current_price = prices.get(tx.coin_id, {}).get("usd", 0)
-            tx_cost = tx.amount * tx.price_usd
-            tx_value = tx.amount * current_price
+            value = tx.amount * current_price
+            cost = tx.amount * tx.price_usd
 
-            total_cost += tx_cost
-            total_value += tx_value
+            if tx.coin_id not in performance:
+                performance[tx.coin_id] = {
+                    "cost": 0,
+                    "value": 0,
+                    "name": tx.coin_name,
+                    "symbol": tx.coin_symbol
+                }
 
-            performance.setdefault(tx.coin_name, {"cost": 0, "value": 0})
-            performance[tx.coin_name]["cost"] += tx_cost
-            performance[tx.coin_name]["value"] += tx_value
+            performance[tx.coin_id]["cost"] += cost
+            performance[tx.coin_id]["value"] += value
 
-            logger.debug(f"{tx.coin_name}: price_usd={tx.price_usd}, current_price={current_price}, amount={tx.amount}, cost={tx_cost}, value={tx_value}")
-
+        total_cost = sum(p["cost"] for p in performance.values())
+        total_value = sum(p["value"] for p in performance.values())
         profit_loss = total_value - total_cost
         profit_loss_pct = (profit_loss / total_cost * 100) if total_cost else 0
 
-        # Find best and worst performer
         best = None
         worst = None
         best_pct = float('-inf')
         worst_pct = float('inf')
 
-        for coin, data in performance.items():
+        for coin_id, data in performance.items():
             if data["cost"] == 0:
                 continue
             pct = ((data["value"] - data["cost"]) / data["cost"]) * 100
             if pct > best_pct:
                 best_pct = pct
-                best = coin
+                best = Performer(
+                    coin_id=coin_id,
+                    coin_name=data["name"],
+                    coin_symbol=data["symbol"],
+                    profit_loss_percentage=pct,
+                    profit_loss=data["value"] - data["cost"]
+                )
             if pct < worst_pct:
                 worst_pct = pct
-                worst = coin
+                worst = Performer(
+                    coin_id=coin_id,
+                    coin_name=data["name"],
+                    coin_symbol=data["symbol"],
+                    profit_loss_percentage=pct,
+                    profit_loss=data["value"] - data["cost"]
+                )
 
-        # Calculate asset allocation
         asset_allocation = {
-            coin: (data["value"] / total_value * 100) if total_value else 0
-            for coin, data in performance.items()
+            data["name"]: (data["value"] / total_value * 100 if total_value else 0)
+            for data in performance.values()
         }
-
-        logger.info(f"✅ Computed metrics - Total: ${total_value:.2f}, Cost: ${total_cost:.2f}, PnL: ${profit_loss:.2f} ({profit_loss_pct:.2f}%)")
 
         return PortfolioMetrics(
             total_value=total_value,
@@ -154,6 +160,5 @@ class PortfolioAnalytics:
             worst_performer=worst,
             asset_allocation=asset_allocation
         )
-
 
 portfolio_analytics = PortfolioAnalytics(coingecko_service)
