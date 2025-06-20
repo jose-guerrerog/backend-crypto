@@ -1,36 +1,37 @@
 import json
+import logging
 import asyncio
 import aiohttp
 from channels.generic.websocket import AsyncWebsocketConsumer
+
+logger = logging.getLogger(__name__)
 
 class CryptoPriceConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         try:
             await self.accept()
-            print("WebSocket connected successfully!")
-
+            logger.info("WebSocket connected successfully!")
             await self.send(text_data=json.dumps({
                 'type': 'connection',
                 'message': 'Connected to crypto price updates',
                 'status': 'success'
             }))
-
             await asyncio.sleep(2)
             self.price_task = asyncio.create_task(self.send_price_updates())
-
         except Exception as e:
-            print(f"WebSocket connection error: {e}")
+            logger.error(f"WebSocket connection error: {e}")
             await self.close()
 
     async def disconnect(self, close_code):
-        print(f"WebSocket disconnected: {close_code}")
+        logger.info(f"WebSocket disconnected: {close_code}")
         if hasattr(self, 'price_task'):
             self.price_task.cancel()
+            logger.info("Price update task cancelled")
 
     async def receive(self, text_data):
         try:
             data = json.loads(text_data)
-            print(f"Received from client: {data}")
+            logger.info(f"Received from client: {data}")
 
             if data.get('type') == 'ping':
                 await self.send(text_data=json.dumps({
@@ -50,14 +51,14 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                     'original_message': data,
                     'server_message': 'Message received successfully'
                 }))
-
         except json.JSONDecodeError:
+            logger.warning("Invalid JSON received")
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'message': 'Invalid JSON format'
             }))
         except Exception as e:
-            print(f"Error handling WebSocket message: {e}")
+            logger.error(f"Error handling WebSocket message: {e}")
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'message': f'Server error: {str(e)}'
@@ -73,23 +74,21 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                         'data': prices,
                         'timestamp': asyncio.get_event_loop().time()
                     }))
-                    print("Sent price update successfully")
+                    logger.info("Sent price update successfully")
                     await asyncio.sleep(30)
-
                 except asyncio.CancelledError:
-                    print("Price update task cancelled")
+                    logger.info("Price update task cancelled")
                     break
                 except Exception as e:
-                    print(f"Error in price update loop: {e}")
+                    logger.error(f"Error in price update loop: {e}")
                     await self.send(text_data=json.dumps({
                         'type': 'error',
                         'message': 'Failed to fetch price updates',
                         'error': str(e)
                     }))
                     await asyncio.sleep(10)
-
         except Exception as e:
-            print(f"Fatal error in send_price_updates: {e}")
+            logger.critical(f"Fatal error in send_price_updates: {e}")
 
     async def fetch_crypto_prices(self):
         try:
@@ -118,10 +117,11 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                     else:
                         raise Exception(f"Proxy failed with status {response.status}")
         except Exception as e:
-            print(f"Proxy fetch failed: {e}")
+            logger.warning(f"Proxy fetch failed: {e}")
             return self.get_fallback_prices()
 
     def get_fallback_prices(self):
+        logger.warning("📦 Using fallback price data")
         return {
             'bitcoin': {'usd': 45000, 'usd_24h_change': 2.5},
             'ethereum': {'usd': 3000, 'usd_24h_change': 1.8},
