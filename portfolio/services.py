@@ -1,3 +1,4 @@
+# services.py
 import requests
 import time
 import json
@@ -81,8 +82,10 @@ class PortfolioAnalytics:
                 asset_allocation={}
             )
 
-        coin_ids = list(set(tx.coin_id for tx in transactions))
+        # Normalize coin_ids
+        coin_ids = list(set(tx.coin_id.lower() for tx in transactions))
         prices = self.price_service.get_current_prices(coin_ids)
+        logger.info(f"🔍 CoinGecko prices fetched:\n{json.dumps(prices, indent=2)}")
 
         if not prices:
             return PortfolioMetrics(
@@ -98,20 +101,23 @@ class PortfolioAnalytics:
         performance = {}
 
         for tx in transactions:
-            current_price = prices.get(tx.coin_id, {}).get("usd", 0)
+            coin_id = tx.coin_id.lower()
+            current_price = prices.get(coin_id, {}).get("usd", 0)
             value = tx.amount * current_price
             cost = tx.amount * tx.price_usd
 
-            if tx.coin_id not in performance:
-                performance[tx.coin_id] = {
+            logger.debug(f"📈 {coin_id}: current_price={current_price}, amount={tx.amount}, value={value}, cost={cost}")
+
+            if coin_id not in performance:
+                performance[coin_id] = {
                     "cost": 0,
                     "value": 0,
                     "name": tx.coin_name,
                     "symbol": tx.coin_symbol
                 }
 
-            performance[tx.coin_id]["cost"] += cost
-            performance[tx.coin_id]["value"] += value
+            performance[coin_id]["cost"] += cost
+            performance[coin_id]["value"] += value
 
         total_cost = sum(p["cost"] for p in performance.values())
         total_value = sum(p["value"] for p in performance.values())
@@ -150,6 +156,8 @@ class PortfolioAnalytics:
             data["name"]: (data["value"] / total_value * 100 if total_value else 0)
             for data in performance.values()
         }
+
+        logger.debug(f"📊 Final Asset Allocation:\n{json.dumps(asset_allocation, indent=2)}")
 
         return PortfolioMetrics(
             total_value=total_value,
