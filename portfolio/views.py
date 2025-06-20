@@ -12,6 +12,11 @@ from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
 from .models import Portfolio
 from django.http import JsonResponse
+from dataclasses import asdict
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 @csrf_exempt
 @api_view(['GET', 'POST'])
@@ -174,24 +179,25 @@ def remove_transaction(request, portfolio_id, transaction_id):
     transaction.delete()
     return Response({'message': 'Transaction deleted'})
 
-@api_view(['GET'])
+@api_view(["GET"])
 def portfolio_analytics_view(request, portfolio_id):
     try:
         portfolio = Portfolio.objects.get(id=portfolio_id)
-        metrics = portfolio_analytics.calculate_portfolio_metrics(portfolio)
+    except Portfolio.DoesNotExist:
+        return JsonResponse({"error": "Portfolio not found"}, status=404)
 
-        # Debug: show transaction count and fetched prices
-        transactions = portfolio.transactions.all()
-        coin_ids = list(set(t.coin_id for t in transactions))
-        debug_info = {
-            'transaction_count': transactions.count(),
-            'coin_ids': coin_ids,
-        }
+    metrics = portfolio_analytics.calculate_portfolio_metrics(portfolio)
 
-        return JsonResponse({
-            'metrics': metrics.__dict__,
-            'debug': debug_info
-        })
+    debug_info = {
+        "transaction_count": portfolio.transactions.count(),
+        "coin_ids": list(set(tx.coin_id for tx in portfolio.transactions.all()))
+    }
+
+    logger.info(f"📊 Returning analytics for portfolio {portfolio_id}")
+    return JsonResponse({
+        "metrics": asdict(metrics),
+        "debug": debug_info
+    })
 
     except Portfolio.DoesNotExist:
         return JsonResponse({'error': 'Portfolio not found'}, status=404)
