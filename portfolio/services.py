@@ -84,7 +84,7 @@ class PortfolioAnalytics:
                 asset_allocation={}
             )
 
-        coin_ids = list(set(tx.coin_name for tx in transactions))
+        coin_ids = list(set(tx.coin_id for tx in transactions))
         prices = self.price_service.get_current_prices(coin_ids)
 
         if not prices:
@@ -104,7 +104,7 @@ class PortfolioAnalytics:
         performance = {}
 
         for tx in transactions:
-            current_price = prices.get(tx.coin_name, {}).get("usd", 0)
+            current_price = prices.get(tx.coin_id, {}).get("usd", 0)
             tx_cost = tx.amount * tx.price_usd
             tx_value = tx.amount * current_price
 
