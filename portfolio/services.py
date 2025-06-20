@@ -126,26 +126,30 @@ class PortfolioAnalytics:
 
         for coin_id, data in performance.items():
             if data["cost"] == 0:
-                continue
-            pct = ((data["value"] - data["cost"]) / data["cost"]) * 100
+                 continue
+
+            profit = data["value"] - data["cost"]
+            pct = (profit / data["cost"]) * 100
+
+            performer = Performer(
+                coin_id=coin_id,
+                coin_name=data["name"],
+                coin_symbol=data["symbol"],
+                profit_loss_percentage=pct,
+                profit_loss=profit
+            )
+
             if pct > best_pct:
                 best_pct = pct
-                best = Performer(
-                    coin_id=coin_id,
-                    coin_name=data["name"],
-                    coin_symbol=data["symbol"],
-                    profit_loss_percentage=pct,
-                    profit_loss=data["value"] - data["cost"]
-                )
-            if pct < worst_pct:
+                best = performer
+
+            if pct < worst_pct and coin_id != best.coin_id:
                 worst_pct = pct
-                worst = Performer(
-                    coin_id=coin_id,
-                    coin_name=data["name"],
-                    coin_symbol=data["symbol"],
-                    profit_loss_percentage=pct,
-                    profit_loss=data["value"] - data["cost"]
-                )
+                worst = performer
+
+        # Edge case: if all coins are the same or only one exists
+        if best and not worst:
+            worst = best
 
         asset_allocation = {
             data["name"]: (data["value"] / total_value * 100 if total_value else 0)
