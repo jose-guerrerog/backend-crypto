@@ -154,6 +154,7 @@ class CoinGeckoService:
         }
 
         data = self._make_request("/coins/markets", params)
+        print(f"📊 Raw API response: {data}")
         if not data or not isinstance(data, list):
             print(f"⚠️ CoinGecko returned no usable data for: {coin_ids_str}")
             return {}
@@ -189,7 +190,10 @@ class PortfolioAnalytics:
 
     def calculate_portfolio_metrics(self, portfolio: Portfolio) -> PortfolioMetrics:
         transactions = portfolio.transactions.all()
+        print(f"📊 Retrieved {transactions.count()} transactions for portfolio {portfolio.id}")
+
         if not transactions.exists():
+            print(f"⚠️ No transactions found for portfolio {portfolio.id}")
             return PortfolioMetrics(
                 total_value=0,
                 total_cost=0,
@@ -223,6 +227,9 @@ class PortfolioAnalytics:
                 holdings[coin_id]['cost_basis'] -= transaction.amount * transaction.price_usd
 
         holdings = {k: v for k, v in holdings.items() if v['amount'] > 0}
+
+        print(f"✅ Current prices: {current_prices}")
+        print(f"🪙 Holdings: {holdings}")
 
         total_value = 0
         total_cost = 0
