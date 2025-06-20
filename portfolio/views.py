@@ -199,9 +199,6 @@ def portfolio_analytics_view(request, portfolio_id):
         "debug": debug_info
     })
 
-    except Portfolio.DoesNotExist:
-        return JsonResponse({'error': 'Portfolio not found'}, status=404)
-
 @api_view(['GET'])
 def search_coins(request):
     """Search for cryptocurrencies"""
