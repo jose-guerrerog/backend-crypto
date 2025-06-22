@@ -3,6 +3,7 @@ import time
 import json
 import logging
 from typing import Dict, Optional, List
+from django.core.cache import cache
 from .models import Portfolio, Transaction
 from .schemas import PortfolioMetrics, Performer
 
@@ -11,6 +12,8 @@ logger = logging.getLogger(__name__)
 class CoinGeckoService:
     BASE_URL = "https://api.coingecko.com/api/v3"
     PROXY_BASE = "https://api.allorigins.win/get"
+    CACHE_KEY = "cached_crypto_prices"
+    CACHE_TTL = 60  # seconds
 
     def __init__(self):
         self.session = requests.Session()
@@ -44,23 +47,35 @@ class CoinGeckoService:
             logger.error(f"Proxy request failed: {e}")
         return None
 
-    def get_current_prices(self, coin_ids: List[str]) -> Dict[str, float]:
+    def get_current_prices(self, coin_ids: List[str]) -> Dict:
+        cached = cache.get(self.CACHE_KEY)
+        if cached:
+            logger.info("✅ Using cached CoinGecko prices")
+            return cached
+
         endpoint = "/simple/price"
         params = {
             "ids": ",".join(coin_ids),
-            "vs_currencies": "usd"
+            "vs_currencies": "usd",
+            "include_24hr_change": "true",
+            "include_last_updated_at": "true"
         }
 
-        # Try proxy request
         prices = self._proxy_request(endpoint, params)
         if prices:
-            logger.info(f"✅ CoinGecko prices fetched: {prices}")
+            if 'status' in prices and prices['status'].get('error_code') == 429:
+                logger.warning("🚫 CoinGecko rate limit hit")
+                return cached if cached else {}
+
+            cache.set(self.CACHE_KEY, prices, timeout=self.CACHE_TTL)
+            logger.info("✅ Fetched + cached CoinGecko prices")
             return prices
 
         logger.warning(f"⚠️ CoinGecko returned no usable data for: {','.join(coin_ids)}")
-        return {}
+        return cached if cached else {}
 
 coingecko_service = CoinGeckoService()
+
 
 class PortfolioAnalytics:
     def __init__(self, price_service: CoinGeckoService):
@@ -147,7 +162,6 @@ class PortfolioAnalytics:
                 worst_pct = pct
                 worst = performer
 
-        # Edge case: if all coins are the same or only one exists
         if best and not worst:
             worst = best
 

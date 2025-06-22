@@ -1,12 +1,8 @@
 import json
 import logging
 import asyncio
-import aiohttp
 from channels.generic.websocket import AsyncWebsocketConsumer
-from django.core.cache import cache
-
-CACHE_KEY = "cached_crypto_prices"
-CACHE_TTL = 60 * 5  # 5 minutes
+from portfolio.services import coingecko_service
 
 logger = logging.getLogger(__name__)
 
@@ -41,25 +37,12 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
 
             elif data.get('type') == 'subscribe':
                 coins = data.get('coins', ['bitcoin', 'ethereum', 'cardano'])
-                self.coins = coins  # Store subscribed coins
+                self.coins = coins
                 await self.send(json.dumps({
                     'type': 'subscription',
                     'message': f'Subscribed to: {", ".join(coins)}',
                     'coins': coins
                 }))
-
-            else:
-                await self.send(json.dumps({
-                    'type': 'echo',
-                    'original_message': data,
-                    'server_message': 'Message received successfully'
-                }))
-        except json.JSONDecodeError:
-            logger.warning("❌ Invalid JSON received")
-            await self.send(json.dumps({
-                'type': 'error',
-                'message': 'Invalid JSON format'
-            }))
         except Exception as e:
             logger.error(f"⚠️ WebSocket error: {e}")
             await self.send(json.dumps({
@@ -94,53 +77,6 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
             logger.critical(f"🔥 Fatal error in update loop: {e}")
 
     async def fetch_crypto_prices(self):
-        try:
-            coins = getattr(self, 'coins', ['bitcoin', 'ethereum', 'cardano'])
-            ids = ",".join(coins)
-            url = "https://api.coingecko.com/api/v3/simple/price"
-            params = {
-                'ids': ids,
-                'vs_currencies': 'usd',
-                'include_24hr_change': 'true',
-                'include_last_updated_at': 'true'
-            }
-
-            query = "&".join(f"{k}={v}" for k, v in params.items())
-            target_url = f"{url}?{query}"
-            proxy_url = f"https://api.allorigins.win/get?url={target_url}"
-
-            logger.info(f"🌍 Requesting prices via proxy: {proxy_url}")
-            timeout = aiohttp.ClientTimeout(total=10)
-
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(proxy_url) as response:
-                    if response.status == 200:
-                        wrapper = await response.json()
-                        if 'contents' in wrapper:
-                            contents = wrapper['contents']
-                            parsed = json.loads(contents)
-                            # Cache successful result
-                            cache.set(CACHE_KEY, parsed, CACHE_TTL)
-                            return parsed
-                        else:
-                            raise Exception("Missing 'contents' in proxy response")
-                    else:
-                        raise Exception(f"Proxy failed with status {response.status}")
-        except Exception as e:
-            logger.warning(f"🔁 Proxy fetch failed: {e}")
-            return self.get_cached_prices_or_default()
-
-    def get_cached_prices_or_default(self):
-        cached = cache.get(CACHE_KEY)
-        if cached:
-            logger.info("♻️ Using Redis cached prices")
-            return cached
-
-        logger.warning("📦 Using hardcoded fallback price data")
-        return {
-            'bitcoin': {'usd': 45000, 'usd_24h_change': 2.5},
-            'ethereum': {'usd': 3000, 'usd_24h_change': 1.8},
-            'cardano': {'usd': 0.42, 'usd_24h_change': -0.5},
-            'polkadot': {'usd': 15.5, 'usd_24h_change': -0.8},
-            'chainlink': {'usd': 10.25, 'usd_24h_change': 3.2}
-        }
+        coins = getattr(self, 'coins', ['bitcoin', 'ethereum', 'cardano'])
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, coingecko_service.get_current_prices, coins)
