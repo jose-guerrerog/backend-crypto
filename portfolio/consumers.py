@@ -3,6 +3,10 @@ import logging
 import asyncio
 import aiohttp
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.core.cache import cache
+
+CACHE_KEY = "cached_crypto_prices"
+CACHE_TTL = 60 * 5  # 5 minutes
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +105,6 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                 'include_last_updated_at': 'true'
             }
 
-            # Build proxy URL
             query = "&".join(f"{k}={v}" for k, v in params.items())
             target_url = f"{url}?{query}"
             proxy_url = f"https://api.allorigins.win/get?url={target_url}"
@@ -115,17 +118,25 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                         wrapper = await response.json()
                         if 'contents' in wrapper:
                             contents = wrapper['contents']
-                            return json.loads(contents)
+                            parsed = json.loads(contents)
+                            # Cache successful result
+                            cache.set(CACHE_KEY, parsed, CACHE_TTL)
+                            return parsed
                         else:
                             raise Exception("Missing 'contents' in proxy response")
                     else:
                         raise Exception(f"Proxy failed with status {response.status}")
         except Exception as e:
             logger.warning(f"🔁 Proxy fetch failed: {e}")
-            return self.get_fallback_prices()
+            return self.get_cached_prices_or_default()
 
-    def get_fallback_prices(self):
-        logger.warning("📦 Using fallback price data")
+    def get_cached_prices_or_default(self):
+        cached = cache.get(CACHE_KEY)
+        if cached:
+            logger.info("♻️ Using Redis cached prices")
+            return cached
+
+        logger.warning("📦 Using hardcoded fallback price data")
         return {
             'bitcoin': {'usd': 45000, 'usd_24h_change': 2.5},
             'ethereum': {'usd': 3000, 'usd_24h_change': 1.8},
