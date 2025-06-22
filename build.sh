@@ -15,6 +15,9 @@ python manage.py collectstatic --no-input
 echo "Running database migrations..."
 python manage.py migrate
 
+echo "Seeding database with sample data..."
+python manage.py seed
+
 echo "Creating superuser if it doesn't exist..."
 python manage.py shell -c "
 from django.contrib.auth import get_user_model
