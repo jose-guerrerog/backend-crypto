@@ -1,87 +1,16 @@
-import requests
-import time
-import json
-import logging
-from typing import Dict, Optional, List
-from django.core.cache import cache
-from .models import Portfolio, Transaction
+from .coingecko import coingecko_service
 from .schemas import PortfolioMetrics, Performer
+import logging
 
 logger = logging.getLogger(__name__)
 
-class CoinGeckoService:
-    BASE_URL = "https://api.coingecko.com/api/v3"
-    PROXY_BASE = "https://api.allorigins.win/get"
-    CACHE_KEY = "cached_crypto_prices"
-    CACHE_TTL = 60  # seconds
-
-    def __init__(self):
-        self.session = requests.Session()
-        self.last_request_time = 0
-
-    def _proxy_request(self, endpoint: str, params: Dict) -> Optional[Dict]:
-        try:
-            now = time.time()
-            elapsed = now - self.last_request_time
-            if elapsed < 1.3:
-                time.sleep(1.3 - elapsed)
-
-            url = f"{self.BASE_URL}{endpoint}"
-            param_str = "&".join(f"{key}={value}" for key, value in params.items())
-            full_url = f"{url}?{param_str}"
-            proxy_url = f"{self.PROXY_BASE}?url={requests.utils.quote(full_url)}"
-
-            logger.info(f"🌐 Requesting CoinGecko via proxy: {proxy_url}")
-            response = self.session.get(proxy_url, timeout=10)
-            self.last_request_time = time.time()
-
-            if response.status_code == 200:
-                wrapper = response.json()
-                if 'contents' in wrapper:
-                    return json.loads(wrapper['contents'])
-                else:
-                    logger.warning("Proxy response missing 'contents'")
-            else:
-                logger.warning(f"Proxy request failed with {response.status_code}")
-        except Exception as e:
-            logger.error(f"Proxy request failed: {e}")
-        return None
-
-    def get_current_prices(self, coin_ids: List[str]) -> Dict:
-        cached = cache.get(self.CACHE_KEY)
-        if cached:
-            logger.info("✅ Using cached CoinGecko prices")
-            return cached
-
-        endpoint = "/simple/price"
-        params = {
-            "ids": ",".join(coin_ids),
-            "vs_currencies": "usd",
-            "include_24hr_change": "true",
-            "include_last_updated_at": "true"
-        }
-
-        prices = self._proxy_request(endpoint, params)
-        if prices:
-            if 'status' in prices and prices['status'].get('error_code') == 429:
-                logger.warning("🚫 CoinGecko rate limit hit")
-                return cached if cached else {}
-
-            cache.set(self.CACHE_KEY, prices, timeout=self.CACHE_TTL)
-            logger.info("✅ Fetched + cached CoinGecko prices")
-            return prices
-
-        logger.warning(f"⚠️ CoinGecko returned no usable data for: {','.join(coin_ids)}")
-        return cached if cached else {}
-
-coingecko_service = CoinGeckoService()
-
-
 class PortfolioAnalytics:
-    def __init__(self, price_service: CoinGeckoService):
-        self.price_service = price_service
+    def __init__(self):
+        self.price_service = coingecko_service
 
-    def calculate_portfolio_metrics(self, portfolio: Portfolio) -> PortfolioMetrics:
+    def calculate_portfolio_metrics(self, portfolio):
+        from .models import Portfolio, Transaction  # lazy import
+
         transactions = portfolio.transactions.all()
         logger.info(f"🧠 Portfolio: {portfolio.name} ({portfolio.id}) - {transactions.count()} transactions")
 
@@ -97,7 +26,7 @@ class PortfolioAnalytics:
             )
 
         coin_ids = list(set(tx.coin_id.lower() for tx in transactions))
-        prices = self.price_service.get_current_prices(coin_ids)
+        prices = self.price_service.get_prices(coin_ids)
         logger.info(f"🔍 CoinGecko prices fetched:\n{prices}")
 
         if not prices:
@@ -141,7 +70,7 @@ class PortfolioAnalytics:
 
         for coin_id, data in performance.items():
             if data["cost"] == 0:
-                 continue
+                continue
 
             profit = data["value"] - data["cost"]
             pct = (profit / data["cost"]) * 100
@@ -180,4 +109,4 @@ class PortfolioAnalytics:
             asset_allocation=asset_allocation
         )
 
-portfolio_analytics = PortfolioAnalytics(coingecko_service)
+portfolio_analytics = PortfolioAnalytics()
