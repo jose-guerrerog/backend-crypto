@@ -186,7 +186,7 @@ CACHES = {
 # ASGI configuration for WebSockets
 ASGI_APPLICATION = 'crypto_backend.asgi.application'
 
-# Django Channels - In-memory layer (FREE, no Redis needed)
+# Django Channels - In-memory layer (FREE, no  needed)
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels.layers.InMemoryChannelLayer'
