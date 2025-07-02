@@ -112,7 +112,7 @@ python -m venv env
 source env/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py runserver
+daphne -p 8000 crypto_backend.asgi:application
 ```
 
 Make sure PostgreSQL and Redis are running.
