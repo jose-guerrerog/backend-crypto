@@ -8,7 +8,6 @@ def health_check(request):
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('portfolio.urls')),  # Your portfolio API
-    path('health/', health_check),  # Health check endpoint
-    path('', health_check),  # Root endpoint
+    path('api/', include('portfolio.urls')),  
+    path('health/', health_check)
 ]

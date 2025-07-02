@@ -9,7 +9,7 @@ class PortfolioAnalytics:
         self.price_service = coingecko_service
 
     def calculate_portfolio_metrics(self, portfolio):
-        from .models import Portfolio, Transaction  # lazy import
+        from .models import Portfolio, Transaction 
 
         transactions = portfolio.transactions.all()
         logger.info(f"🧠 Portfolio: {portfolio.name} ({portfolio.id}) - {transactions.count()} transactions")

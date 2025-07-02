@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class CryptoPriceConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
-        logger.info("🟢 WebSocket connected")
+        logger.info("WebSocket connected")
         await self.send(json.dumps({
             'type': 'connection',
             'message': 'Connected to crypto price updates',
@@ -21,7 +21,7 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
         logger.info(f"🔌 WebSocket disconnected: {close_code}")
         if hasattr(self, 'price_task'):
             self.price_task.cancel()
-            logger.info("⛔ Price update task cancelled")
+            logger.info("Price update task cancelled")
 
     async def receive(self, text_data):
         try:
@@ -38,7 +38,7 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                     'coins': self.coins
                 }))
         except Exception as e:
-            logger.error(f"⚠️ WebSocket error: {e}")
+            logger.error(f"WebSocket error: {e}")
             await self.send(json.dumps({
                 'type': 'error',
                 'message': f'Server error: {str(e)}'
@@ -53,13 +53,13 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
                     'data': prices,
                     'timestamp': asyncio.get_event_loop().time()
                 }))
-                logger.info("📤 Sent price update")
+                logger.info("Sent price update")
                 await asyncio.sleep(30)
             except asyncio.CancelledError:
-                logger.info("🛑 Price update loop cancelled")
+                logger.info("Price update loop cancelled")
                 break
             except Exception as e:
-                logger.error(f"💥 Error in price loop: {e}")
+                logger.error(f"Error in price loop: {e}")
                 await self.send(json.dumps({
                     'type': 'error',
                     'message': 'Failed to fetch price updates',

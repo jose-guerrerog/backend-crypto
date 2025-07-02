@@ -27,7 +27,6 @@ def portfolios(request):
             result = []
             for p in portfolios:
                 transactions = p.transactions.all()
-                print(f"🧠 Portfolio: {p.name} ({p.id}) - {transactions.count()} transactions")
 
                 result.append({
                     'id': p.id,
@@ -76,7 +75,6 @@ def portfolios(request):
             }, status=201)
 
         except Exception as e:
-            # Debug info visible in response
             return Response({
                 'error': 'Server error',
                 'debug': str(e),
@@ -193,7 +191,6 @@ def portfolio_analytics_view(request, portfolio_id):
         "coin_ids": list(set(tx.coin_id for tx in portfolio.transactions.all()))
     }
 
-    logger.info(f"📊 Returning analytics for portfolio {portfolio_id}")
     return JsonResponse({
         "metrics": asdict(metrics),
         "debug": debug_info

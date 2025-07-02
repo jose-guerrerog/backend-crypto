@@ -21,7 +21,7 @@ class CoinGeckoService:
     def get_prices(self, coin_ids: List[str]) -> Dict:
         cached = cache.get(CACHE_KEY)
         if cached:
-            logger.info("✅ Using cached CoinGecko prices")
+            logger.info("Using cached CoinGecko prices")
             return cached
 
         now = time.time()
@@ -41,7 +41,7 @@ class CoinGeckoService:
         proxy_url = f"{self.PROXY_BASE}?url={requests.utils.quote(full_url)}"
 
         try:
-            logger.info(f"🌐 Requesting CoinGecko via proxy: {proxy_url}")
+            logger.info(f"Requesting CoinGecko via proxy: {proxy_url}")
             response = self.session.get(proxy_url, timeout=10)
             self.last_request_time = time.time()
 
@@ -54,7 +54,7 @@ class CoinGeckoService:
                     cache.set(CACHE_KEY, prices, timeout=CACHE_TTL)
                     return prices
         except Exception as e:
-            logger.warning(f"🛑 CoinGecko error: {e}")
+            logger.warning(f"CoinGecko error: {e}")
 
         return cache.get(CACHE_KEY, {})
 
