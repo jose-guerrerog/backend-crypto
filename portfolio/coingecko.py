@@ -21,40 +21,53 @@ class CoinGeckoService:
         # Try cache first
         try:
             cached = cache.get(CACHE_KEY)
-            if cached:
-                logger.info("✅ Using cached CoinGecko prices")
-                return cached
         except ConnectionInterrupted:
-            logger.warning("⚠️ Redis unavailable when reading cache.")
+            logger.warning("⚠️ Redis unavailable while reading cache.")
+            cached = None
 
-        # Build proxied request URL
+        if cached:
+            logger.info("✅ Using cached CoinGecko prices")
+            return cached
+
+        # Build proxy-wrapped URL
+        query_ids = ",".join(coin_ids)
+        target_url = (
+            f"{self.BASE_URL}/simple/price?"
+            f"ids={query_ids}&vs_currencies=usd"
+            f"&include_24hr_change=true&include_last_updated_at=true"
+        )
+        proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url)}"
+
         try:
-            query = f"ids={','.join(coin_ids)}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true"
-            target_url = f"{self.BASE_URL}/simple/price?{query}"
-            proxy_url = f"https://api.allorigins.win/get?url={requests.utils.quote(target_url)}"
-
             logger.info(f"🌐 Fetching CoinGecko data via proxy: {proxy_url}")
             response = self.session.get(proxy_url, timeout=10)
-            response.raise_for_status()
+            if response.status_code != 200:
+                logger.warning(f"🚨 Proxy response failed: {response.status_code}")
+                return cache.get(CACHE_KEY, {}) or {}
 
-            # Parse the inner contents (wrapped JSON)
-            content = response.json().get("contents")
-            prices = json.loads(content)
+            raw = response.json()
 
-            logger.info(f"✅ Prices fetched via proxy: {prices}")
+            # Parse the actual JSON payload from `contents`
+            if "contents" not in raw:
+                logger.warning("🚨 Missing 'contents' in proxy response")
+                return cache.get(CACHE_KEY, {}) or {}
 
-            # Cache the result
+            prices = json.loads(raw["contents"])
+
+            if "status" in prices and "error_code" in prices["status"]:
+                logger.warning(f"🚨 CoinGecko error response (not caching): {prices}")
+                return cache.get(CACHE_KEY, {}) or {}
+
+            logger.info(f"🔍 CoinGecko prices fetched: {prices}")
             try:
                 cache.set(CACHE_KEY, prices, timeout=CACHE_TTL)
             except ConnectionInterrupted:
-                logger.warning("⚠️ Redis unavailable when writing to cache.")
+                logger.warning("⚠️ Redis unavailable while writing cache.")
 
             return prices
 
         except Exception as e:
-            logger.warning(f"🚨 Proxy fetch error: {e}")
-
-        # Fallback: empty result
-        return {}
+            logger.warning(f"🚨 CoinGecko fetch error: {e}")
+            return cache.get(CACHE_KEY, {}) or {}
 
 coingecko_service = CoinGeckoService()
