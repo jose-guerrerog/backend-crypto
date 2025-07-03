@@ -18,7 +18,7 @@ ALLOWED_HOSTS = [
 ]
 
 # Redis
-REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/1')
 
 # Installed apps
 INSTALLED_APPS = [
@@ -81,7 +81,6 @@ CACHES = {
         "LOCATION": REDIS_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "SSL": REDIS_URL.startswith("rediss://")
         }
     }
 }

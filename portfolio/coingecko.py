@@ -1,27 +1,35 @@
-import requests
+import os
 import time
 import json
 import logging
-from django.core.cache import cache
+import requests
 from typing import List, Dict
+from django.core.cache import cache
+from django_redis.exceptions import ConnectionInterrupted
 
 logger = logging.getLogger(__name__)
 
 CACHE_KEY = "cached_crypto_prices"
-CACHE_TTL = 60  # seconds
+CACHE_TTL = 60  # Cache time in seconds
 
 class CoinGeckoService:
     BASE_URL = "https://api.coingecko.com/api/v3"
-    PROXY_BASE = "https://api.allorigins.win/get"
 
     def __init__(self):
         self.session = requests.Session()
         self.last_request_time = 0
+        self.api_key = os.getenv("COINGECKO_API_KEY")
 
     def get_prices(self, coin_ids: List[str]) -> Dict:
-        cached = cache.get(CACHE_KEY)
+        # Try to get from cache
+        try:
+            cached = cache.get(CACHE_KEY)
+        except ConnectionInterrupted:
+            logger.warning("⚠️ Redis unavailable while trying to read cache.")
+            cached = None
+
         if cached:
-            logger.info("Using cached CoinGecko prices")
+            logger.info("✅ Using cached CoinGecko prices")
             return cached
 
         now = time.time()
@@ -36,26 +44,34 @@ class CoinGeckoService:
             "include_24hr_change": "true",
             "include_last_updated_at": "true"
         }
-        query = "&".join(f"{k}={v}" for k, v in params.items())
-        full_url = f"{endpoint}?{query}"
-        proxy_url = f"{self.PROXY_BASE}?url={requests.utils.quote(full_url)}"
+
+        headers = {
+            "x-cg-demo-api-key": self.api_key  # Use 'x-cg-pro-api-key' if on paid plan
+        }
 
         try:
-            logger.info(f"Requesting CoinGecko via proxy: {proxy_url}")
-            response = self.session.get(proxy_url, timeout=10)
+            logger.info(f"🌐 Requesting CoinGecko API: {endpoint}")
+            response = self.session.get(endpoint, params=params, headers=headers, timeout=10)
             self.last_request_time = time.time()
 
             if response.status_code == 200:
-                wrapper = response.json()
-                if 'contents' in wrapper:
-                    prices = json.loads(wrapper['contents'])
-                    if 'status' in prices and prices['status'].get('error_code') == 429:
-                        raise Exception("Rate limited")
+                prices = response.json()
+                try:
                     cache.set(CACHE_KEY, prices, timeout=CACHE_TTL)
-                    return prices
+                except ConnectionInterrupted:
+                    logger.warning("⚠️ Redis unavailable while trying to write cache.")
+                logger.info(f"🔍 CoinGecko prices fetched:\n{prices}")
+                return prices
+            else:
+                logger.warning(f"🚨 CoinGecko API error: {response.status_code} - {response.text}")
         except Exception as e:
-            logger.warning(f"CoinGecko error: {e}")
+            logger.warning(f"🚨 CoinGecko fetch error: {e}")
 
-        return cache.get(CACHE_KEY, {})
+        # Fallback to old cache
+        try:
+            return cache.get(CACHE_KEY, {})
+        except ConnectionInterrupted:
+            logger.warning("⚠️ Redis unavailable on fallback.")
+            return {}
 
 coingecko_service = CoinGeckoService()
