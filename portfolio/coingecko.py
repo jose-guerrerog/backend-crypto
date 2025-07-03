@@ -50,17 +50,17 @@ class CoinGeckoService:
         }
 
         try:
-            logger.info(f"🌐 Requesting CoinGecko API: {endpoint}")
+            logger.info(f"🌐 Requesting CoinGecko API: {endpoint} with {params}")
             response = self.session.get(endpoint, params=params, headers=headers, timeout=10)
             self.last_request_time = time.time()
 
             if response.status_code == 200:
                 prices = response.json()
+                logger.info(f"🔍 CoinGecko prices fetched: {prices}")
                 try:
                     cache.set(CACHE_KEY, prices, timeout=CACHE_TTL)
                 except ConnectionInterrupted:
                     logger.warning("⚠️ Redis unavailable while trying to write cache.")
-                logger.info(f"🔍 CoinGecko prices fetched:\n{prices}")
                 return prices
             else:
                 logger.warning(f"🚨 CoinGecko API error: {response.status_code} - {response.text}")

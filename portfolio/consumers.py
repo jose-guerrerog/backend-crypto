@@ -15,7 +15,7 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
             'message': 'Connected to crypto price updates',
             'status': 'success'
         }))
-        self.coins = ['bitcoin', 'ethereum', 'cardano']  # default fallback
+        self.coins = ['bitcoin', 'ethereum', 'solana', 'dogecoin', 'cardano']  # expanded default fallback
         self.price_task = asyncio.create_task(self.send_price_updates())
 
     async def disconnect(self, close_code):
@@ -31,8 +31,12 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
 
             if data.get('type') == 'ping':
                 await self.send(json.dumps({'type': 'pong', 'timestamp': data.get('timestamp')}))
+
             elif data.get('type') == 'subscribe':
-                # Restart the price update task with new coins
+                coins = data.get('coins', [])
+                if coins:
+                    self.coins = coins
+                    logger.info(f"🔔 Subscribed coins updated: {self.coins}")
                 if hasattr(self, 'price_task'):
                     self.price_task.cancel()
                     logger.info("♻️ Restarting price task with new coin list")
