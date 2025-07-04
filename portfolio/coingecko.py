@@ -18,7 +18,6 @@ class CoinGeckoService:
         self.session = requests.Session()
 
     def get_prices(self, coin_ids: List[str]) -> Dict:
-        # Try cache first
         try:
             cached = cache.get(CACHE_KEY)
         except ConnectionInterrupted:
