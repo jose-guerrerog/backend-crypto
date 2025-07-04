@@ -15,7 +15,7 @@ class CryptoPriceConsumer(AsyncWebsocketConsumer):
             'message': 'Connected to crypto price updates',
             'status': 'success'
         }))
-        self.coins = ['bitcoin', 'ethereum', 'solana', 'dogecoin', 'cardano']  # expanded default fallback
+        self.coins = ['bitcoin', 'ethereum', 'solana', 'dogecoin', 'cardano', 'polkadot'] 
         self.price_task = asyncio.create_task(self.send_price_updates())
 
     async def disconnect(self, close_code):
