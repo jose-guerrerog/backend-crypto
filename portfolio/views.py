@@ -17,7 +17,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 @csrf_exempt
 @api_view(['GET', 'POST'])
 def portfolios(request):
